@@ -1,0 +1,128 @@
+/* .settings-menu {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    width: 200px;
+    padding: 15px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+  }
+  
+  .settings-menu h3 {
+    color: black;
+    margin: 0 0 10px;
+    font-size: 16px;
+  }
+  
+  .settings-menu label {
+    color: black;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .settings-menu input[type="range"] {
+    width: 100%;
+    margin-top: 8px;
+  }
+  
+  .settings-menu input[type="number"] {
+    margin-top: 5px;
+  }
+ */
+ .settings-menu {
+  position: fixed;
+  top: 70px;
+  right: 200px;
+  width: 300px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  font-family: "Inter", sans-serif;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-menu h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  text-align: center;
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setting-item label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.offset-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.offset-input-group input[type="range"] {
+  flex: 1;
+}
+
+.offset-input-group input[type="number"] {
+  width: 60px;
+  text-align: center;
+}
+
+.toggle-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.toggle-group .status {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.status.on {
+  color: #10b981;
+}
+
+.status.off {
+  color: #ef4444;
+}
+
+.toggle-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+.clear-button {
+  align-self: center; /* 按钮居中 */
+  padding: 10px 20px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s ease;
+}
+
+.clear-button:hover {
+  background: #dc2626;
+}

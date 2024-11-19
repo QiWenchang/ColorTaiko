@@ -1,0 +1,60 @@
+.component {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    top: 10px;
+    right: 300px;
+  }
+  
+  .button-group {
+    display: flex;
+  }
+  
+  .button-group svg {
+    background-color: #f4f4f5;
+    border-radius: 6px;
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  
+  .button-left:hover,
+  .button-center:hover,
+  .button-right:hover {
+    opacity: 0.8;
+  }
+  
+  .button-right .bar {
+    fill: rgb(15, 15, 15);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  
+  .button-right .arrow-head {
+    opacity: 0;
+    transform: scale(0.5);
+    stroke: rgb(15, 15, 15);
+    transform-origin: center;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  
+  .button-right.arrow .bar1 {
+    transform: translateY(7px) rotate(45deg);
+    visibility: hidden;
+  }
+  
+  .button-right.arrow .bar2 {
+    opacity: 0;
+    visibility: hidden;
+  }
+  
+  .button-right.arrow .bar3 {
+    transform: translateY(-7px) rotate(-45deg);
+    visibility: hidden;
+  }
+  
+  .button-right.arrow .arrow-head {
+    opacity: 1;
+    transform: scale(1);
+  }
+  

@@ -7,13 +7,15 @@ import { calculateProgress } from "./utils/calculateProgress";
 import { checkAndAddNewNodes} from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
 
-import SettingIconImage from "./assets/setting-icon.png";
 
 import TaikoNode from "./components/TaikoNodes/TaikoNode";
 import ErrorModal from "./components/ErrorModal";
-import SettingsMenu from "./components/ToolMenu/settingMenu";
+import SettingsMenu from "./components/ButtonGroup/ToolMenu/settingMenu";
 import ProgressBar from "./components/ProgressBar/progressBar";
 import Title from "./components/title";
+import ButtonGroup from './components/ButtonGroup/buttonGroup';
+import StageIndicator from './components/StageIndicator/StageIndicator';
+
 import { useAudio } from './hooks/useAudio';
 import { useSettings } from './hooks/useSetting';
 
@@ -241,7 +243,7 @@ function App() {
     setLightMode((prevMode) => !prevMode);
   };
 
-
+  
 
   const tryConnect = (nodes) => {
     if (nodes.length !== 2) return;
@@ -363,13 +365,7 @@ function App() {
         <div className="welcome-message fade-message">You did it! 100%!</div>
       )}
   
-      <img
-        src={SettingIconImage}
-        alt="Settings Icon"
-        className="icon"
-        onClick={handleToolMenuClick}
-      />
-  
+      <ButtonGroup handleToolMenuClick={handleToolMenuClick} />
       {showSettings && (
         <SettingsMenu
           offset={offset}
@@ -380,12 +376,9 @@ function App() {
           onToggleBlackDotEffect={toggleBlackDotEffect}
           lightMode={lightMode}
           onToggleLightMode={toggleLightMode}
+          onClear={handleClear}
         />
       )}
-  
-      <button onClick={handleClear} className="clear-button">
-        Clear
-      </button>
  
       <ErrorModal
         className="error-container"
@@ -400,6 +393,7 @@ function App() {
         <div className="game-row bottom-row">{createBottomRow(bottomRowCount)}</div>
       </div>
     )}
+    <StageIndicator />
     </div>
   );
 }
