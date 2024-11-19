@@ -3,7 +3,7 @@ import { useState } from 'react';
 import './progressBar.css';
 
 
-const ProgressBar = ({ progress, connections, topRowCount, bottomRowCount }) => {
+const ProgressBar = ({ progress, connections, topRowCount, bottomRowCount, lightMode}) => {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
@@ -15,10 +15,11 @@ const ProgressBar = ({ progress, connections, topRowCount, bottomRowCount }) => 
   const hideTooltip = () => {
     setTooltipVisible(false);
   };
+  
 
   return (
     <div style={{ marginTop: '-55px' }}>
-      <p style={{ color: 'white', fontSize: '14px', textAlign: 'left', marginBottom: '-5px' }}>
+      <p style={{ color: lightMode ? 'black' : '#837b7b', fontSize: '14px', textAlign: 'left', marginBottom: '-5px' }}>
         Can you get to 100%?
       </p>
 
@@ -33,15 +34,6 @@ const ProgressBar = ({ progress, connections, topRowCount, bottomRowCount }) => 
         </div>
       </div>
 
-      <p style={{ color: 'white', fontSize: '14px', textAlign: 'left', marginTop: '-7px', marginBottom: '-20px' }}>
-        Progress = <span style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-          <span style={{ display: 'block', textAlign: 'center' }}>verticalEdges</span>
-          <span style={{ display: 'block', borderTop: '1px solid white', paddingTop: '2px', textAlign: 'center' }}>
-            (topRowCount - 1) × (bottomRowCount - 1) - (1 if odd, else 0)
-          </span>
-        </span>
-        <span style={{ marginLeft: '5px' }}>× 100%</span>
-      </p>
 
       {tooltipVisible && (
         <div
@@ -51,6 +43,18 @@ const ProgressBar = ({ progress, connections, topRowCount, bottomRowCount }) => 
           <p>Vertical Edges: {connections.length}</p>
           <p>Top Nodes: {topRowCount - 1}</p>
           <p>Bottom Nodes: {bottomRowCount - 1}</p>
+          <p style={{ color: 'white', fontSize: '12px', textAlign: 'left', marginTop: '0px', marginBottom: '-20px' }}>
+            Success: 
+            <span style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+              <span style={{ display: 'block', textAlign: 'center' }}>{connections.length}</span>
+              <span style={{ display: 'block', borderTop: lightMode ? '1px solid black' : '1px solid white', paddingTop: '2px', textAlign: 'center' }}>
+                ({topRowCount - 1} × {bottomRowCount - 1})
+              </span>
+            </span>
+            <span style={{ marginLeft: '5px' }}>= {connections.length / ((topRowCount - 1) * (bottomRowCount - 1))}</span>
+          </p>
+          
+
         </div>
       )}
     </div>
@@ -61,6 +65,7 @@ ProgressBar.propTypes = {
   connections: PropTypes.array.isRequired,
   topRowCount: PropTypes.number.isRequired,
   bottomRowCount: PropTypes.number.isRequired,
+  lightMode: PropTypes.bool.isRequired
 };
 
 export default ProgressBar;

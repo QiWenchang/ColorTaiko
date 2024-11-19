@@ -5,6 +5,7 @@ import { drawConnections } from "./utils/drawingUtils";
 import { checkAndGroupConnections } from "./utils/MergeUtils";
 import { calculateProgress } from "./utils/calculateProgress";
 import { checkAndAddNewNodes} from "./utils/checkAndAddNewNodes";
+import { getConnectedNodes } from "./utils/getConnectedNodes";
 
 import SettingIconImage from "./assets/setting-icon.png";
 
@@ -13,7 +14,6 @@ import ErrorModal from "./components/ErrorModal";
 import SettingsMenu from "./components/ToolMenu/settingMenu";
 import ProgressBar from "./components/ProgressBar/progressBar";
 import Title from "./components/title";
-
 import { useAudio } from './hooks/useAudio';
 import { useSettings } from './hooks/useSetting';
 
@@ -34,14 +34,19 @@ function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const svgRef = useRef(null);
   const groupMapRef = useRef(new Map());
+  const previousProgressRef = useRef(progress);
+  const [highlightedNodes, setHighlightedNodes] = useState([]);
 
   // Custom hooks for managing audio and settings
-  const { errorAudio, connectAudio } = useAudio();
-  const { offset, setOffset, soundBool, setSoundBool, blackDotEffect, setBlackDotEffect } = useSettings();
+  const { clickAudio, errorAudio, connectsuccess, perfectAudio} = useAudio();
+  const { offset, setOffset, soundBool, setSoundBool, blackDotEffect, setBlackDotEffect,
+          lightMode, setLightMode
+        }  = useSettings();
 
   // References for SVG elements and connection groups
   const [showSettings, setShowSettings] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState(false);
+  const [Percent100Message, setPercent100Message] = useState(false);
 
   /**
    * Sets welcome message visibility based on the number of nodes in each row.
@@ -51,6 +56,7 @@ function App() {
       setWelcomeMessage(true);
     }
   }, [topRowCount, bottomRowCount]);
+  
 
   /**
    * Draws connections on the SVG element when related state changes.
@@ -71,10 +77,35 @@ function App() {
 
   /**
    * Calculates progress as a percentage based on completed connections.
+   * Play connect success sound when progress increases.
    */
   useEffect(() => {
-    setProgress(calculateProgress(connections, topRowCount, bottomRowCount));
-  }, [connections, topRowCount, bottomRowCount]);
+    const timer = setTimeout(() => {
+      const newProgress = calculateProgress(connections, topRowCount, bottomRowCount);
+      setProgress(newProgress);
+  
+      if (newProgress === 100) {
+        setPercent100Message(true);
+        if(soundBool) {
+        perfectAudio.play();
+        }
+      } else if (newProgress > previousProgressRef.current && soundBool) {
+        console.log("connect success sound");
+        connectsuccess.play();
+      }
+  
+      previousProgressRef.current = newProgress;
+    }, 100);
+  
+    return () => clearTimeout(timer);
+
+  }, [connections,topRowCount, bottomRowCount]);
+
+  // useEffect(() => {
+  //   setProgressToShow(calculateProgress(connections, topRowCount, bottomRowCount));
+  // }, [connections, topRowCount, bottomRowCount]);
+
+
 
   /**
    * Handles window resize events to redraw connections, ensuring layout consistency.
@@ -86,6 +117,16 @@ function App() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [svgRef, connections, connectionPairs, offset]);
+
+  /**
+   * for debugging purposes
+   */
+
+  // useEffect(() => {
+  //   console.log("Connections",connections);
+  //   console.log("Connection Pairs",connectionPairs);
+  // } , [connections]);
+
 
   /**
    * Groups connections when a new connection pair is completed.
@@ -115,6 +156,8 @@ function App() {
         isFaded={count > 1 && i === count - 1}
         position="top"
         blackDotEffect={blackDotEffect}
+        lightMode={lightMode}
+        isHighlighted={highlightedNodes.includes(`top-${i}`)}
       />
     ));
 
@@ -130,29 +173,40 @@ function App() {
         isFaded={count > 1 && i === count - 1}
         position="bottom"
         blackDotEffect={blackDotEffect}
+        lightMode={lightMode}
+        isHighlighted={highlightedNodes.includes(`bottom-${i}`)}
       />
     ));
 
-  const handleNodeClick = (nodeId) => {
-    setErrorMessage("");
-    if (soundBool) connectAudio.play();
-    if (selectedNodes.includes(nodeId)) {
-      setSelectedNodes(selectedNodes.filter((id) => id !== nodeId));
-    } else {
-      if (selectedNodes.length < 2) {
+    const handleNodeClick = (nodeId) => {
+      setErrorMessage("");
+    
+      // Play click audio if sound is enabled
+      if (soundBool) clickAudio.play();
+    
+      // If the node is already selected, deselect it and clear highlights
+      if (selectedNodes.includes(nodeId)) {
+        setSelectedNodes(selectedNodes.filter((id) => id !== nodeId));
+        setHighlightedNodes([]); // Clear highlighted nodes
+      } 
+      // If less than 2 nodes are selected, process the selection
+      else if (selectedNodes.length < 2) {
         const newSelectedNodes = [...selectedNodes, nodeId];
         setSelectedNodes(newSelectedNodes);
+    
+        // If one node is selected, highlight connected nodes
+        if (newSelectedNodes.length === 1) {
+          const connectedNodes = getConnectedNodes(nodeId, connectionPairs); // Use refined utility function
+          setHighlightedNodes(connectedNodes); // Highlight nodes connected to the first selected node
+        }
+    
+        // If two nodes are selected, attempt a connection
         if (newSelectedNodes.length === 2) {
           tryConnect(newSelectedNodes);
-          // checkAndGroupConnections();
+          setHighlightedNodes([]); // Clear highlights after a connection attempt
         }
       }
-    } else if (selectedNodes.length < 2) {
-      const newSelectedNodes = [...selectedNodes, nodeId];
-      setSelectedNodes(newSelectedNodes);
-      if (newSelectedNodes.length === 2) tryConnect(newSelectedNodes);
-    }
-  };
+    };
 
   const handleToolMenuClick = () => setShowSettings((prev) => !prev);
 
@@ -186,11 +240,21 @@ function App() {
     setBlackDotEffect((prev) => !prev);
   };
 
+  const toggleLightMode = () => {
+    setLightMode((prevMode) => !prevMode);
+  };
+
+
+
   const tryConnect = (nodes) => {
     if (nodes.length !== 2) return;
-    const [node1, node2] = nodes;
+    let [node1, node2] = nodes;
     const isTopNode = (id) => id.startsWith("top");
     const isBottomNode = (id) => id.startsWith("bottom");
+
+    if (isBottomNode(node1) && isTopNode(node2)) {
+      [node1, node2] = [node2, node1];
+    }
 
     if (
       (isTopNode(node1) && isTopNode(node2)) ||
@@ -238,7 +302,7 @@ function App() {
       // If there is a pending edge, use the same color and create a pair
       newColor = edgeState.color;
       const newConnection = {
-        nodes: nodes,
+        nodes: [node1, node2],
         color: newColor,
       };
       setConnections([...connections, newConnection]);
@@ -264,15 +328,15 @@ function App() {
   
         return updatedPairs;
       });
-      console.log(connectionPairs);
+      //.log(connectionPairs);
       setEdgeState(null);
     } else {
       // If no pending edge, create a new edge and add to edgeState
-      newColor = generateColor(currentColor, setCurrentColor);
-      console.log("newColor: ", newColor);
+      newColor = generateColor(currentColor, setCurrentColor, connectionPairs);
+      //console.log("newColor: ", newColor);
       //console.log(newColor);
       const newConnection = {
-        nodes: nodes,
+        nodes: [node1, node2],
         color: newColor,
       };
       setConnections([...connections, newConnection]);
@@ -283,404 +347,14 @@ function App() {
     setSelectedNodes([]);
   };
 
-  const drawArc = (startRect, endRect, svgRect, color, arcHeight) => {
-    const midX = (startRect.left + endRect.left) / 2;
-    const startY = startRect.top + startRect.height / 2 - svgRect.top;
-    const endY = endRect.top + endRect.height / 2 - svgRect.top;
-
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-
-    // Modify arcHeight: negative for upward arc, positive for downward arc
-    const d = `
-      M ${startRect.left + startRect.width / 2 - svgRect.left}, ${startY} 
-      C ${midX}, ${startY + arcHeight} ${midX}, ${endY + arcHeight} 
-      ${endRect.left + endRect.width / 2 - svgRect.left}, ${endY}
-    `;
-
-    line.setAttribute("d", d.trim());
-    line.setAttribute("stroke", color);
-    line.setAttribute("fill", "none");
-    line.setAttribute("stroke-width", "4");
-
-
-    svgRef.current.appendChild(line);
-  };
-
-  useEffect(() => {
-    const handleResize = () => {
-      drawConnections(); 
-    };
-  
-    window.addEventListener('resize', handleResize);
-  
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [connections, connectionPairs]);
-
-  const drawConnections = () => {
-    if (!svgRef.current) return;
-  
-    // Clear existing lines and curves
-    while (svgRef.current.firstChild) {
-      svgRef.current.removeChild(svgRef.current.firstChild);
-    }
-  
-    // Get the latest SVG container position and size
-    const svgRect = svgRef.current.getBoundingClientRect();
-  
-    // Draw straight line connections
-    connections.forEach(({ nodes: [start, end], color }) => {
-      const startElement = document.getElementById(start);
-      const endElement = document.getElementById(end);
-  
-      if (startElement && endElement) {
-        // Get the latest node positions
-        const startRect = startElement.getBoundingClientRect();
-        const endRect = endElement.getBoundingClientRect();
-  
-        // Calculate the start and end points of the line
-        const startX = startRect.left + startRect.width / 2 - svgRect.left;
-        const startY = startRect.top + startRect.height / 2 - svgRect.top;
-        const endX = endRect.left + endRect.width / 2 - svgRect.left;
-        const endY = endRect.top + endRect.height / 2 - svgRect.top;
-  
-        // Create a straight line
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", startX);
-        line.setAttribute("y1", startY);
-        line.setAttribute("x2", endX);
-        line.setAttribute("y2", endY);
-        line.setAttribute("stroke", color);
-        line.setAttribute("stroke-width", "4");
-        line.setAttribute("stroke-linecap", "round");
-  
-        svgRef.current.appendChild(line);
-      }
-    });
-  
-    // Draw curved connections
-    connectionPairs.forEach((pair) => {
-      if (pair.length === 2) {
-        const [
-          {
-            nodes: [startNode1, bottomNode1],
-          },
-          {
-            nodes: [startNode2, bottomNode2],
-            color,
-          },
-        ] = pair;
-  
-        // Determine if the node is top or bottom
-        const topFirst1 = !startNode1.startsWith("bottom");
-        const topFirst2 = !startNode2.startsWith("bottom");
-  
-        // Function to create a curved path
-        const createCurvedPath = (startNode, endNode, isTopCurve) => {
-          const startElement = document.getElementById(startNode);
-          const endElement = document.getElementById(endNode);
-          if (!startElement || !endElement) return null; // Ensure nodes exist
-  
-          const startRect = startElement.getBoundingClientRect();
-          const endRect = endElement.getBoundingClientRect();
-  
-          const startX = startRect.left + startRect.width / 2 - svgRect.left;
-          const startY = startRect.top + startRect.height / 2 - svgRect.top;
-          const endX = endRect.left + endRect.width / 2 - svgRect.left;
-          const endY = endRect.top + endRect.height / 2 - svgRect.top;
-  
-          const dx = endX - startX;
-          const dy = endY - startY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-  
-          const controlX = (startX + endX) / 2;
-          const controlY = isTopCurve 
-            ? Math.min(startY, endY) - (distance / 5)
-            : Math.max(startY, endY) + (distance / 5);
-  
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          const d = `M ${startX},${startY} Q ${controlX},${controlY} ${endX},${endY}`;
-          path.setAttribute("d", d);
-          path.setAttribute("stroke", color);
-          path.setAttribute("fill", "none");
-          path.setAttribute("stroke-width", "4");
-          path.setAttribute("stroke-linecap", "round");
-  
-          return path;
-        };
-  
-        // Draw the top and bottom curves
-        const topCurve = createCurvedPath(
-          topFirst1 ? startNode1 : bottomNode1,
-          topFirst2 ? startNode2 : bottomNode2,
-          true // Top curve
-        );
-        if (topCurve) svgRef.current.appendChild(topCurve);
-  
-        const bottomCurve = createCurvedPath(
-          topFirst1 ? bottomNode1 : startNode1,
-          topFirst2 ? bottomNode2 : startNode2,
-          false // Bottom curve
-        );
-        if (bottomCurve) svgRef.current.appendChild(bottomCurve);
-      }
-    });
-  };
-  
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setShowNodes(true);
-    setConnections([]);
-    setSelectedNodes([]);
-    setErrorMessage("");
-  };
-
-  const handleClear = () => {
-    setConnectionPairs([])
-    setConnections([]);
-    setSelectedNodes([]);
-    setBottomRowCount(1);
-    setTopRowCount(1);
-    setEdgeState(null);
-    setErrorMessage("");
-    setProgress(0);
-    setConnectionGroups([]);
-    console.log(connectionPairs);
-  };
-  
-  const calculateProgress = () => {
-    let totalPossibleConnections = (topRowCount - 1) *  (bottomRowCount - 1);
-    if (totalPossibleConnections % 2 !== 0) {
-      totalPossibleConnections -= 1;
-    }
-    const verticalEdges = connections.length;
-    const progressPercentage = totalPossibleConnections > 4 ? (verticalEdges / totalPossibleConnections) * 100 : 0;
-    setProgress(progressPercentage);
-  };
-
-  const showTooltip = (e) => {
-    setTooltipVisible(true);
-    setTooltipPosition({ x: e.clientX, y: e.clientY });
-  };
-
-  const hideTooltip = () => {
-    setTooltipVisible(false);
-  };
-
-  useEffect(() => {
-    calculateProgress();
-  }, [connections, topRowCount, bottomRowCount]);
-  
-  const [connectionGroups, setConnectionGroups] = useState([]);
-
-  const checkAndGroupConnections = () => {
-    const groupMap = new Map(); // Stores shared {top} or {bottom} combinations
-    let colorMerged = false; // Flag to indicate if a color merge occurred
-    const newGroups = []; // Temporarily stores newly generated unique groups
-
-    console.log("Current connectionPairs:", connectionPairs);
-
-    connectionPairs.forEach((pair) => {
-      if (pair.length !== 2) return; // Ensure pair contains two connections
-
-      const [firstConnection, secondConnection] = pair;
-      const [top1, bottom1] = firstConnection.nodes;
-      const [top2, bottom2] = secondConnection.nodes;
-
-      // Get the combination of top and bottom nodes (order-independent) as keys
-      const topCombination = [top1, top2].sort().join(",");
-      const bottomCombination = [bottom1, bottom2].sort().join(",");
-
-      let targetGroup = null;
-
-      // Check if there is already a group containing this combination
-      if (groupMap.has(topCombination)) {
-        targetGroup = groupMap.get(topCombination);
-      } else if (groupMap.has(bottomCombination)) {
-        targetGroup = groupMap.get(bottomCombination);
-      }
-
-      if (targetGroup) {
-        // If a matching group is found, use the same color and add new connection pairs
-        const groupColor = targetGroup.color;
-        pair.forEach((connection) => {
-          // Merge only if connection colors differ
-          if (connection.color !== groupColor) {
-            connection.color = groupColor;
-            colorMerged = true; // Mark color merge occurred
-          }
-          if (!targetGroup.pairs.includes(connection)) {
-            targetGroup.pairs.push(connection);
-          }
-        });
-
-        // Update targetGroup's nodes to include all relevant nodes
-        targetGroup.nodes = Array.from(
-          new Set([
-            ...targetGroup.nodes,
-            top1,
-            top2,
-            bottom1,
-            bottom2,
-          ])
-        );
-
-      } else {
-        // If no matching combination exists, create a new group using the color of the first connection in the pair
-        const groupColor = firstConnection.color;
-        pair.forEach((connection) => (connection.color = groupColor));
-        const newGroup = {
-          nodes: [top1, top2, bottom1, bottom2],
-          pairs: [...pair],
-          color: groupColor,
-        };
-
-        // Store the new group in groupMap and newGroups
-        groupMap.set(topCombination, newGroup);
-        groupMap.set(bottomCombination, newGroup);
-        newGroups.push(newGroup);
-      }
-    });
-
-    // Merge new groups to ensure color consistency
-    const mergeGroups = () => {
-      let merged = false;
-      const groupsToProcess = [...newGroups]; // Copy of new groups to process
-      groupsToProcess.forEach((newGroup) => {
-        connectionGroups.forEach((existingGroup) => {
-          // Check if there are shared top or bottom nodes
-          const hasSharedNodes = newGroup.nodes.some((node) =>
-            existingGroup.nodes.includes(node)
-          );
-
-          if (hasSharedNodes) {
-            // Merge colors, using existingGroup's color as the base
-            const baseColor = existingGroup.color;
-            newGroup.pairs.forEach((connection) => {
-              if (connection.color !== baseColor) {
-                connection.color = baseColor;
-                colorMerged = true;
-              }
-            });
-
-            // Merge all nodes and connection pairs
-            existingGroup.nodes = Array.from(
-              new Set([...existingGroup.nodes, ...newGroup.nodes])
-            );
-            existingGroup.pairs = Array.from(
-              new Set([...existingGroup.pairs, ...newGroup.pairs])
-            );
-
-            merged = true;
-
-            // Remove processed group from newGroups
-            newGroups.splice(newGroups.indexOf(newGroup), 1);
-          }
-        });
-      });
-      
-      return merged;
-    };
-
-    // Recursively call until no more merging occurs
-    while (mergeGroups());
-
-    // Update connectionGroups only if color merging happened
-    if (colorMerged) {
-      setConnectionGroups((prevGroups) => {
-        const uniqueGroups = [...prevGroups];
-        newGroups.forEach((group) => {
-          const existingGroup = uniqueGroups.find(
-            (g) => g.nodes.sort().join(",") === group.nodes.sort().join(",")
-          );
-          if (!existingGroup) uniqueGroups.push(group);
-        });
-        return uniqueGroups;
-      });
-    }
-
-    console.log("Finished checkAndGroupConnections");
-};
-
-  useEffect(() => {
-    if (connectionPairs.length > 0) {
-      checkAndGroupConnections();
-    }
-  }, [connectionPairs]);
-  
-  
-  useEffect(() => {
-    checkAndGroupConnections();
-  }, [connectionPairs]);
+  if (lightMode) {
+    document.body.classList.add('light-mode');
+  } else {
+    document.body.classList.remove('light-mode');
+  }
 
   return (
-    
-    <div
-      style={{
-        textAlign: "center",
-        position: "relative",
-        fontFamily: "Arial, sans-serif",
-      }}
-      className="AppContainer"
-    >
-    <h1 className="title">
-      <a href="https://mineyev.web.illinois.edu/ColorTaiko!/" target="_blank" style={{ textDecoration: "none" }}>
-        <span style={{ color: '#e6194b', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>C</span>
-        <span style={{ color: '#3cb44b', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>o</span>
-        <span style={{ color: '#ffe119', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>l</span>
-        <span style={{ color: '#f58231', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>o</span>
-        <span style={{ color: '#dcbeff', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>r</span>
-        <span style={{ color: '#9a6324', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>T</span>
-        <span style={{ color: '#fabebe', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>a</span>
-        <span style={{ color: '#7f00ff', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>i</span>
-        <span style={{ color: '#f032e6', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>k</span>
-        <span style={{ color: '#42d4f4', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>o</span>
-        <span style={{ color: '#bfef45', backgroundColor: '#000000', fontSize: 'inherit', display: 'inline-block' }}>!</span>
-      </a>
-    </h1>
-
-      <div
-        className="progress-bar-container"
-        onMouseEnter={showTooltip}
-        onMouseMove={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        <div className="progress-bar-fill" style={{ width: `${progress}%` }}>
-          <span className="progress-bar-text">{Math.round(progress)}%</span>
-        </div>
-      </div>
-
-      {tooltipVisible && (
-        <div
-          className="tooltip"
-          style={{ top: tooltipPosition.y + 10, left: tooltipPosition.x + 10 }}
-        >
-          <p>Vertical Edges: {connections.length}</p>
-          <p>Top Nodes: {topRowCount - 1}</p>
-          <p>Bottom Nodes: {bottomRowCount - 1}</p>
-        </div>
-      )}
-
-      <button
-        onClick={handleClear}
-        style={{
-          position: "absolute",
-          top: "10px",
-          right: "10px",
-          padding: "10px 20px",
-          fontSize: "16px",
-          backgroundColor: "#f44336",
-          color: "white",
-          border: "none",
-          borderRadius: "5px",
-          cursor: "pointer",
-          fontFamily: "inherit", // This will use the font from the parent element
-        }}
-      >
-  return (
-    <div className="app-container">
+    <div className={`app-container ${lightMode ? 'light-mode' : 'dark-mode'}`}>
       <Title />
   
       <ProgressBar
@@ -688,10 +362,15 @@ function App() {
         connections={connections}
         topRowCount={topRowCount}
         bottomRowCount={bottomRowCount}
+        lightMode={lightMode}
       />
   
       {welcomeMessage && (
-        <div className="welcome-message fade-message">Connect the nodes!</div>
+        <div className="welcome-message fade-message">Connect the vertices!</div>
+      )}
+
+      {Percent100Message && (
+        <div className="welcome-message fade-message">You did it! 100%!</div>
       )}
   
       <img
@@ -709,13 +388,15 @@ function App() {
           onSoundControl={handleSoundClick}
           blackDotEffect={blackDotEffect}
           onToggleBlackDotEffect={toggleBlackDotEffect}
+          lightMode={lightMode}
+          onToggleLightMode={toggleLightMode}
         />
       )}
   
       <button onClick={handleClear} className="clear-button">
         Clear
       </button>
-  
+ 
       <ErrorModal
         className="error-container"
         message={errorMessage}
@@ -723,12 +404,12 @@ function App() {
       />
   
       {showNodes && (
-        <div className="game-box">
-          <div className="game-row">{createTopRow(topRowCount)}</div>
+      <div className="game-box">
+        <div className="game-row">{createTopRow(topRowCount)}</div>
           <svg ref={svgRef} className="svg-overlay" />
-          <div className="game-row bottom-row">{createBottomRow(bottomRowCount)}</div>
-        </div>
-      )}
+        <div className="game-row bottom-row">{createBottomRow(bottomRowCount)}</div>
+      </div>
+    )}
     </div>
   );
 }
