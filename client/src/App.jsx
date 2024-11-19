@@ -1,91 +1,125 @@
 import { useState, useRef, useEffect } from "react";
-import InputBox from "./InputBox";
-import TaikoNode from "./TaikoNode";
-import ErrorModal from "./ErrorModal";
-import LargeArcEdge from "./LargeArcEdge";
 
-import clickSound from "./assets/sound effect/Click.wav";
-import errorSound from "./assets/sound effect/Error.wav";
-import connectSound from "./assets/sound effect/Connection.wav";
+import { generateColor } from "./utils/colorUtils";
+import { drawConnections } from "./utils/drawingUtils";
+import { checkAndGroupConnections } from "./utils/MergeUtils";
+import { calculateProgress } from "./utils/calculateProgress";
+import { checkAndAddNewNodes} from "./utils/checkAndAddNewNodes";
 
-const edgeTypes = {
-  custom: LargeArcEdge, // Register custom arc edge type
-};
+import SettingIconImage from "./assets/setting-icon.png";
+
+import TaikoNode from "./components/TaikoNodes/TaikoNode";
+import ErrorModal from "./components/ErrorModal";
+import SettingsMenu from "./components/ToolMenu/settingMenu";
+import ProgressBar from "./components/ProgressBar/progressBar";
+import Title from "./components/title";
+
+import { useAudio } from './hooks/useAudio';
+import { useSettings } from './hooks/useSetting';
+
+
 
 function App() {
+  // Game state management
   const [topRowCount, setTopRowCount] = useState(1);
   const [bottomRowCount, setBottomRowCount] = useState(1);
-  const [showNodes, setShowNodes] = useState(true);
+  const [showNodes] = useState(true);
   const [selectedNodes, setSelectedNodes] = useState([]);
   const [connections, setConnections] = useState([]);
+  const [connectionPairs, setConnectionPairs] = useState([]);
+  const [connectionGroups, setConnectionGroups] = useState([]);
   const [edgeState, setEdgeState] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [currentColor, setCurrentColor] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const svgRef = useRef(null);
+  const groupMapRef = useRef(new Map());
 
-  const [progress, setProgress] = useState(0);
+  // Custom hooks for managing audio and settings
+  const { errorAudio, connectAudio } = useAudio();
+  const { offset, setOffset, soundBool, setSoundBool, blackDotEffect, setBlackDotEffect } = useSettings();
 
-  const clickAudio = new Audio(clickSound);
-  const errorAudio = new Audio(errorSound);
-  const connectAudio = new Audio(connectSound);
+  // References for SVG elements and connection groups
+  const [showSettings, setShowSettings] = useState(false);
+  const [welcomeMessage, setWelcomeMessage] = useState(false);
 
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  /**
+   * Sets welcome message visibility based on the number of nodes in each row.
+   */
+  useEffect(() => {
+    if (topRowCount === 1 && bottomRowCount === 1) {
+      setWelcomeMessage(true);
+    }
+  }, [topRowCount, bottomRowCount]);
 
-  const [currentColor, setCurrentColor] = useState(0);
+  /**
+   * Draws connections on the SVG element when related state changes.
+   */
+  useEffect(() => {
+    drawConnections(svgRef, connections, connectionPairs, offset);
+  }, [connectionGroups, connections, topRowCount, bottomRowCount, connectionPairs, offset]);
 
-
-  // store the pair of edges
-  const [connectionPairs, setConnectionPairs] = useState([]);
-
+  /**
+   * Checks if new nodes should be added based on current connections.
+   */
   useEffect(() => {
     // console.log("Connections updated:", connections);
     drawConnections();
   }, [connections, topRowCount, bottomRowCount, connectionPairs]);
-
-  useEffect(() => {
-    checkAndAddNewNodes();
+    checkAndAddNewNodes(topRowCount, bottomRowCount, connections, setTopRowCount, setBottomRowCount);
   }, [connections, topRowCount, bottomRowCount]);
 
+  /**
+   * Calculates progress as a percentage based on completed connections.
+   */
   useEffect(() => {
-    console.log("CONNECTION PAIRS:", connectionPairs);
+    setProgress(calculateProgress(connections, topRowCount, bottomRowCount));
+  }, [connections, topRowCount, bottomRowCount]);
+
+  /**
+   * Handles window resize events to redraw connections, ensuring layout consistency.
+   */
+  useEffect(() => {
+    const handleResize = () => {
+      drawConnections(svgRef, connections, connectionPairs, offset);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [svgRef, connections, connectionPairs, offset]);
+
+  /**
+   * Groups connections when a new connection pair is completed.
+   */
+  useEffect(() => {
+    const latestPair = connectionPairs[connectionPairs.length - 1];
+    if (latestPair && latestPair.length === 2) {
+      checkAndGroupConnections(
+        latestPair,
+        groupMapRef,
+        setConnectionGroups,
+        connections,
+        setConnections
+      );
+    }
   }, [connectionPairs]);
 
-  const checkAndAddNewNodes = () => {
-    const allTopNodesConnected = Array.from({ length: topRowCount }, (_, i) =>
-      connections.some((conn) => conn.nodes.includes(`top-${i}`))
-    ).every(Boolean);
-
-    const allBottomNodesConnected = Array.from(
-      { length: bottomRowCount },
-      (_, i) => connections.some((conn) => conn.nodes.includes(`bottom-${i}`))
-    ).every(Boolean);
-
-    if (allTopNodesConnected || allBottomNodesConnected) {
-      if (allTopNodesConnected) {
-        setTopRowCount((prev) => prev + 1);
-      } else {
-        setBottomRowCount((prev) => prev + 1);
-      }
-    }
-  };
-
-  const createTopRow = (count) => {
-    return Array.from({ length: count }, (_, i) => (
-      <>
-        <TaikoNode
-          key={`top-${i}`}
-          id={`top-${i}`}
-          onClick={() => handleNodeClick(`top-${i}`)}
-          isSelected={selectedNodes.includes(`top-${i}`)}
-          index={i}
-          totalCount={topRowCount}
-        />
-      </>
+  const createTopRow = (count) =>
+    Array.from({ length: count }, (_, i) => (
+      <TaikoNode
+        key={`top-${i}`}
+        id={`top-${i}`}
+        onClick={() => handleNodeClick(`top-${i}`)}
+        isSelected={selectedNodes.includes(`top-${i}`)}
+        index={i}
+        totalCount={topRowCount}
+        isFaded={count > 1 && i === count - 1}
+        position="top"
+        blackDotEffect={blackDotEffect}
+      />
     ));
-  };
 
-  const createBottomRow = (count) => {
-    return Array.from({ length: count }, (_, i) => (
+  const createBottomRow = (count) =>
+    Array.from({ length: count }, (_, i) => (
       <TaikoNode
         key={`bottom-${i}`}
         id={`bottom-${i}`}
@@ -93,13 +127,15 @@ function App() {
         isSelected={selectedNodes.includes(`bottom-${i}`)}
         index={i}
         totalCount={bottomRowCount}
+        isFaded={count > 1 && i === count - 1}
+        position="bottom"
+        blackDotEffect={blackDotEffect}
       />
     ));
-  };
 
   const handleNodeClick = (nodeId) => {
     setErrorMessage("");
-    connectAudio.play();
+    if (soundBool) connectAudio.play();
     if (selectedNodes.includes(nodeId)) {
       setSelectedNodes(selectedNodes.filter((id) => id !== nodeId));
     } else {
@@ -111,48 +147,44 @@ function App() {
           // checkAndGroupConnections();
         }
       }
+    } else if (selectedNodes.length < 2) {
+      const newSelectedNodes = [...selectedNodes, nodeId];
+      setSelectedNodes(newSelectedNodes);
+      if (newSelectedNodes.length === 2) tryConnect(newSelectedNodes);
     }
   };
 
-  const generateColor = () => {
-    // const hue = Math.floor(Math.random() * 360); // Hue ranges from 0 to 360
-    // const saturation = Math.floor(Math.random() * 100) + 50; // Saturation ranges from 50% to 100%
-    // const lightness = Math.floor(Math.random() * 20) + 30; // Lightness ranges from 30% to 50%
-    
-    const colors = [];
-    colors.push('#e6194b'); // red
-    colors.push('#ffffff'); // black
-    colors.push('#a9a9a9'); // grey
-    colors.push('#3cb44b'); // green
-    colors.push('#ffe119'); // yellow
-    colors.push('#f58231'); // orange
-    colors.push('#dcbeff'); // lavender
-    colors.push('#9a6324'); // brown
-    colors.push('#fabebe'); // pink
-    colors.push('#7f00ff'); // violet
-    colors.push('#f032e6'); // magenta
-    colors.push('#42d4f4'); // cyan
-    colors.push('#800000'); // maroon
-    colors.push('#469990'); // teal
-    colors.push('#bfef45'); // lime
-    colors.push('#808000'); // olive
-    colors.push('#ffd8b1'); // apricot
-    colors.push('#aaffc3'); // mint
-    colors.push('#c8ad7f'); // beige
-    colors.push('#4363d8'); // blue
-    colors.push('#4b0082'); // indigo
+  const handleToolMenuClick = () => setShowSettings((prev) => !prev);
 
-    let temp = currentColor;
-    setCurrentColor(temp + 1);
+  const handleClear = () => {
+    setConnectionPairs([]);
+    setConnections([]);
+    setSelectedNodes([]);
+    setBottomRowCount(1);
+    setTopRowCount(1);
+    setEdgeState(null);
+    setErrorMessage("");
+    setProgress(0);
+    setConnectionGroups([]);
+    setCurrentColor(0);
+    groupMapRef.current.clear();
+    console.log(connectionPairs);
+  };
 
-    if (currentColor == 19) {
-      temp = 0;
-      setCurrentColor(0);
-    }
-    return colors[temp];
+  const handleSoundClick = () => {
+    // Toggle the soundBool
+    setSoundBool((prev) => !prev);
 
   };
-  
+
+  const handleOffsetChange = (newOffset) => {
+    setOffset(newOffset);
+    localStorage.setItem("offset", newOffset); //store to localStorage
+  };
+
+  const toggleBlackDotEffect = () => {
+    setBlackDotEffect((prev) => !prev);
+  };
 
   const tryConnect = (nodes) => {
     if (nodes.length !== 2) return;
@@ -164,8 +196,10 @@ function App() {
       (isTopNode(node1) && isTopNode(node2)) ||
       (isBottomNode(node1) && isBottomNode(node2))
     ) {
-      errorAudio.play();
-      setErrorMessage("Can't connect two nodes from the same row.");
+      if(soundBool) {
+        errorAudio.play();
+      }
+      setErrorMessage("Can't connect two vertices from the same row.");
       setSelectedNodes([]);
       return;
     }
@@ -175,18 +209,23 @@ function App() {
         (conn.nodes.includes(node1) && conn.nodes.includes(node2)) ||
         (conn.nodes.includes(node2) && conn.nodes.includes(node1))
     );
-  
+
     if (isDuplicate) {
-      errorAudio.play();
-      setErrorMessage("These nodes are already connected.");
+      if(soundBool) {
+        errorAudio.play();
+      }
+      setErrorMessage("These vertices are already connected.");
       setSelectedNodes([]);
       return;
     }
 
     if (
-      edgeState && (edgeState.nodes.includes(node1) || edgeState.nodes.includes(node2))
+      edgeState &&
+      (edgeState.nodes.includes(node1) || edgeState.nodes.includes(node2))
     ) {
-      errorAudio.play();
+      if(soundBool) {
+        errorAudio.play();
+      }
       setErrorMessage(
         "Two vertical edges in each pair should not share a common vertex"
       );
@@ -209,21 +248,29 @@ function App() {
         if (lastPair && lastPair.length === 1) {
           // If the last pair has one connection, complete it
           updatedPairs = [...prevPairs.slice(0, -1), [...lastPair, newConnection]];
+          updatedPairs = [
+            ...prevPairs.slice(0, -1),
+            [...lastPair, newConnection],
+          ];
         } else {
           // Otherwise, create a new pair
           updatedPairs = [...prevPairs, [edgeState, newConnection]];
         }
         if (updatedPairs[updatedPairs.length - 1].length === 2) {
           checkAndGroupConnections();
+          updatedPairs = [...prevPairs, [edgeState, newConnection]];
         }
         return updatedPairs;
   
+        return updatedPairs;
       });
+      console.log(connectionPairs);
       setEdgeState(null);
     } else {
       // If no pending edge, create a new edge and add to edgeState
-      newColor = generateColor();
-      console.log(newColor);
+      newColor = generateColor(currentColor, setCurrentColor);
+      console.log("newColor: ", newColor);
+      //console.log(newColor);
       const newConnection = {
         nodes: nodes,
         color: newColor,
@@ -632,28 +679,54 @@ function App() {
           fontFamily: "inherit", // This will use the font from the parent element
         }}
       >
+  return (
+    <div className="app-container">
+      <Title />
+  
+      <ProgressBar
+        progress={progress}
+        connections={connections}
+        topRowCount={topRowCount}
+        bottomRowCount={bottomRowCount}
+      />
+  
+      {welcomeMessage && (
+        <div className="welcome-message fade-message">Connect the nodes!</div>
+      )}
+  
+      <img
+        src={SettingIconImage}
+        alt="Settings Icon"
+        className="icon"
+        onClick={handleToolMenuClick}
+      />
+  
+      {showSettings && (
+        <SettingsMenu
+          offset={offset}
+          onOffsetChange={handleOffsetChange}
+          soundbool={soundBool}
+          onSoundControl={handleSoundClick}
+          blackDotEffect={blackDotEffect}
+          onToggleBlackDotEffect={toggleBlackDotEffect}
+        />
+      )}
+  
+      <button onClick={handleClear} className="clear-button">
         Clear
       </button>
-
-      <ErrorModal className = "error-container" message={errorMessage} onClose={() => setErrorMessage("")} />
-
+  
+      <ErrorModal
+        className="error-container"
+        message={errorMessage}
+        onClose={() => setErrorMessage("")}
+      />
+  
       {showNodes && (
-        <div className="GameBox" style={{ position: "relative" }}>
-          <div className="GameRow">{createTopRow(topRowCount)}</div>
-          <svg
-            ref={svgRef}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              pointerEvents: "none",
-            }}
-          />
-          <div className="GameRow" style={{ marginTop: "100px" }}>
-            {createBottomRow(bottomRowCount)}
-          </div>
+        <div className="game-box">
+          <div className="game-row">{createTopRow(topRowCount)}</div>
+          <svg ref={svgRef} className="svg-overlay" />
+          <div className="game-row bottom-row">{createBottomRow(bottomRowCount)}</div>
         </div>
       )}
     </div>

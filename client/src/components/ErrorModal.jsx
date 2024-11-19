@@ -1,4 +1,4 @@
-import React from 'react';
+import PropTypes from "prop-types";
 
 const ErrorModal = ({ message, onClose, titleFont }) => {
   if (!message) return null;
@@ -26,7 +26,7 @@ const ErrorModal = ({ message, onClose, titleFont }) => {
         width: '400px',
         textAlign: 'center',
       }}>
-        <h2 style={{ color: 'red', marginTop: 0, fontSize: '24px' }}>Error</h2>
+        <h2 style={{ color: 'red', marginTop: 0, fontSize: '24px' }}>Hint:</h2>
         <p style={{ fontSize: '18px', marginBottom: '30px' }}>{message}</p>
         <button onClick={onClose} style={{
           backgroundColor: '#007bff',
@@ -42,6 +42,11 @@ const ErrorModal = ({ message, onClose, titleFont }) => {
       </div>
     </div>
   );
+};
+ErrorModal.propTypes = {
+  message: PropTypes.string,
+  onClose: PropTypes.func.isRequired,
+  titleFont: PropTypes.string,
 };
 
 export default ErrorModal;
