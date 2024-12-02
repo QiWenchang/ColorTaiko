@@ -90,7 +90,7 @@ function App() {
         perfectAudio.play();
         }
       } else if (newProgress > previousProgressRef.current && soundBool) {
-        console.log("connect success sound");
+        //console.log("connect success sound");
         connectsuccess.play();
       }
   
@@ -122,10 +122,10 @@ function App() {
    * for debugging purposes
    */
 
-  // useEffect(() => {
-  //   console.log("Connections",connections);
-  //   console.log("Connection Pairs",connectionPairs);
-  // } , [connections]);
+  useEffect(() => {
+    console.log("Connections",connections);
+    console.log("Connection Pairs",connectionPairs);
+  } , [connections]);
 
 
   /**
@@ -346,13 +346,13 @@ function App() {
     }
     setSelectedNodes([]);
   };
+  
 
   if (lightMode) {
     document.body.classList.add('light-mode');
   } else {
     document.body.classList.remove('light-mode');
   }
-
   return (
     <div className={`app-container ${lightMode ? 'light-mode' : 'dark-mode'}`}>
       <Title />
