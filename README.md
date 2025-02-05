@@ -14,9 +14,9 @@ The goal for **ColorTaiko!** is to create a complete bipartite graph that satisf
 - _Level 1_ implements color merging when the condition is satisfied.
 - _Level 2_ implements orientation of horizontal edges and detects when orientation fails.
 - _Level 3_ (in progress) implements no-fold condition.
-- _Level 4P_ (in progress) implements no pattern condition.
+- _Level 4NP_ (in progress) implements no pattern condition.
 - _Level 4.6_ (in progress) implements girth-6 condition on both the top and bottom graphs.
-- _Level 5P.6_ (in progress) combines no pattern and girth-6 condition. Successful completion of this level will yield a counterexample to one of the conjectures.
+- _Level 5NP.6_ (in progress) combines no pattern and girth-6 condition. Successful completion of this level will yield a counterexample to one of the conjectures.
 
 You can play the game at the link below:  
 [https://play.math.illinois.edu/ColorTaiko!/](https://play.math.illinois.edu/ColorTaiko!/)
