@@ -32,7 +32,7 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git checkout --orphan deploy  # Create a new deploy branch
           git rm -rf .  # Remove everything from the branch
-          mv client/build/* .  # Move built files from client/build to root
+          mv client/dist/* .  # Move built files from client/dist to root
           git add .
           git commit -m "Deploy React build"
           git push --force origin deploy  # Push built files to deploy branch
