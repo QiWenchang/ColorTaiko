@@ -3,7 +3,7 @@ name: Build and Deploy React App
 on:
   push:
     branches:
-      - main  # Change this if your main branch has a different name
+      - main  # Adjust if your main branch has a different name
 
 jobs:
   build:
@@ -13,24 +13,26 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set Up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18  # Use your required Node.js version
+          node-version: 18  # Use the correct Node.js version for your project
 
       - name: Install Dependencies
         run: npm install
+        working-directory: client  # Run inside the `client/` directory
 
       - name: Build React App
         run: npm run build
+        working-directory: client  # Run inside the `client/` directory
 
       - name: Deploy to Deploy Branch
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git checkout --orphan deploy  # Create a deploy branch
-          git rm -rf .  # Remove everything from the new branch
-          mv build/* .  # Move built files to root
+          git checkout --orphan deploy  # Create a new deploy branch
+          git rm -rf .  # Remove everything from the branch
+          mv client/build/* .  # Move built files from client/build to root
           git add .
           git commit -m "Deploy React build"
-          git push --force origin deploy  # Force push to deploy branch
+          git push --force origin deploy  # Push built files to deploy branch
