@@ -4,7 +4,8 @@ export const checkAndGroupConnections = (
     groupMapRef,
     setConnectionGroups,
     connections,
-    setConnections
+    setConnections,
+    connectionPairs
   ) => {
     const [firstConnection, secondConnection] = newPair;
     const [top1, bottom1] = firstConnection.nodes;
@@ -22,6 +23,32 @@ export const checkAndGroupConnections = (
       matchingGroups.push(groupBottom);
     }
     if (groupTop && groupTop !== groupBottom) matchingGroups.push(groupTop);
+
+    // Helper to update color in the connections array
+    const updateConnectionColorInConnections = (targetConnection, newColor) => {
+      connections.forEach((conn) => {
+        if (
+          (conn.nodes[0] === targetConnection.nodes[0] && conn.nodes[1] === targetConnection.nodes[1]) ||
+          (conn.nodes[0] === targetConnection.nodes[1] && conn.nodes[1] === targetConnection.nodes[0])
+        ) {
+          conn.color = newColor;
+        }
+      });
+    };
+
+    // Helper to update color in the connectionPairs array
+    const updateConnectionColorInPairs = (targetConnection, newColor) => {
+      connectionPairs.forEach(pair => {
+        pair.forEach(connection => {
+          if (
+            (connection.nodes[0] === targetConnection.nodes[0] && connection.nodes[1] === targetConnection.nodes[1]) ||
+            (connection.nodes[0] === targetConnection.nodes[1] && connection.nodes[1] === targetConnection.nodes[0])
+          ) {
+            connection.color = newColor;
+          }
+        });
+      });
+    };
   
     //console.log('Matching Groups:', matchingGroups);
     let mergedGroup = null;
@@ -30,6 +57,8 @@ export const checkAndGroupConnections = (
   
       newPair.forEach((connection) => {
         connection.color = mergedGroup.color;
+        updateConnectionColorInConnections(connection, mergedGroup.color);
+        updateConnectionColorInPairs(connection, mergedGroup.color); 
         if (!mergedGroup.pairs.includes(connection)) {
           mergedGroup.pairs.push(connection);
         }
@@ -43,6 +72,8 @@ export const checkAndGroupConnections = (
         const groupToMerge = matchingGroups[1];
         groupToMerge.pairs.forEach((connection) => {
           connection.color = mergedGroup.color;
+          updateConnectionColorInConnections(connection, mergedGroup.color);
+          updateConnectionColorInPairs(connection, mergedGroup.color); 
         });
         mergedGroup.nodes = Array.from(
           new Set([...mergedGroup.nodes, ...groupToMerge.nodes])
@@ -67,7 +98,11 @@ export const checkAndGroupConnections = (
       //console.log('GroupMap', groupMapRef.current);
     } else {
       const groupColor = firstConnection.color;
-      newPair.forEach((connection) => (connection.color = groupColor));
+      newPair.forEach((connection) => {
+        connection.color = groupColor;
+        updateConnectionColorInConnections(connection, groupColor);
+        updateConnectionColorInPairs(connection, groupColor); 
+      });
   
       const newGroup = {
         nodes: [top1, top2, bottom1, bottom2],

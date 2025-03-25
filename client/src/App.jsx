@@ -49,6 +49,19 @@ function App() {
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [isDropdownDisabled, setIsDropdownDisabled] = useState(false);
 
+  const [history, setHistory] = useState([{
+    connections: [],
+    connectionPairs: [],
+    connectionGroups: [],
+    topRowCount: 1,
+    bottomRowCount: 1,
+    edgeState: null,
+    groupMap: new Map(),
+    topOrientationMap: new Map(),
+    botOrientationMap: new Map()
+  }]);
+  const [currentStep, setCurrentStep] = useState(0);
+
   const handleLevelChange = (event) => {
     setSelectedLevel(event.target.value);
     setLevel(event.target.value)
@@ -68,89 +81,52 @@ function App() {
   const [welcomeMessage, setWelcomeMessage] = useState(false);
   const [Percent100Message, setPercent100Message] = useState(false);
 
-
-  const handleUndo = () => {
-    if (connectionPairs.length === 0) return;
-  
-    // Get the last connection pair
-    const lastConnectionPair = connectionPairs[connectionPairs.length - 1];
-    
-    if (lastConnectionPair.length === 1) {
-      // If the last pair has only one connection, remove it completely
-      setConnectionPairs(prev => prev.slice(0, -1));
-      setConnections(prev => prev.slice(0, -1));
-      setEdgeState(null);
-    } else if (lastConnectionPair.length === 2) {
-      // If the last pair has two connections, remove only the last connection
-      const updatedConnectionPairs = [
-        ...connectionPairs.slice(0, -1),
-        [lastConnectionPair[0]]
-      ];
-      
-      setConnectionPairs(updatedConnectionPairs);
-      
-      // Remove the last connection from connections
-      setConnections(prev => prev.slice(0, -1));
-      
-      // Restore the edge state to the first connection in the pair
-      setEdgeState(lastConnectionPair[0]);
-      
-      // Reset orientation and group maps for the removed connection
-      const nodes = lastConnectionPair[1].nodes;
-      const topCombination = nodes
-        .filter(node => node.startsWith('top'))
-        .sort()
-        .join(',');
-      const bottomCombination = nodes
-        .filter(node => node.startsWith('bottom'))
-        .sort()
-        .join(',');
-  
-      // Remove orientation for this specific combination
-      topOrientation.current.delete(topCombination);
-      botOrientation.current.delete(bottomCombination);
-  
-      // Remove the corresponding group from groupMapRef
-      groupMapRef.current.delete(topCombination);
-    }
-  
-    // Recalculate connection groups
-    setConnectionGroups(prevGroups => {
-      // Remove the last group or modify as needed
-      return prevGroups.slice(0, -1);
-    });
-  
-    // Reduce node rows if necessary
-    const checkReduceNodes = () => {
-      const currentTopNodes = new Set(
-        connections.flatMap(conn => 
-          conn.nodes.filter(node => node.startsWith('top'))
-        )
-      );
-      const currentBottomNodes = new Set(
-        connections.flatMap(conn => 
-          conn.nodes.filter(node => node.startsWith('bottom'))
-        )
-      );
-  
-      const maxTopNodeIndex = Math.max(
-        ...[...currentTopNodes].map(node => 
-          parseInt(node.split('-')[1])
-        ),
-        -1
-      );
-      const maxBottomNodeIndex = Math.max(
-        ...[...currentBottomNodes].map(node => 
-          parseInt(node.split('-')[1])
-        ),
-        -1
-      );
-  
-      setTopRowCount(Math.max(maxTopNodeIndex + 1, 1));
-      setBottomRowCount(Math.max(maxBottomNodeIndex + 1, 1));
+  // Function to save current state to history
+  const saveToHistory = () => {
+    // Create deep copies of all necessary state
+    const newState = {
+      connections: JSON.parse(JSON.stringify(connections)),
+      connectionPairs: JSON.parse(JSON.stringify(connectionPairs)),
+      connectionGroups: JSON.parse(JSON.stringify(connectionGroups)),
+      topRowCount,
+      bottomRowCount,
+      edgeState,
+      groupMap: new Map(groupMapRef.current),
+      topOrientationMap: new Map(topOrientation.current),
+      botOrientationMap: new Map(botOrientation.current)
     };
-  
-    checkReduceNodes();
+
+    // Remove any future states if we're in the middle of the history
+    //const newHistory = history.slice(0, currentStep + 1);
+    
+    setHistory([...history, newState]);
+    //setHistory((prevHistory) => [...prevHistory.slice(0, currentStep + 1), newState]);
+
+    setCurrentStep(currentStep + 1);
+  };
+
+
+  // Updated handleUndo function
+  const handleUndo = () => {
+    if (currentStep > 0) {
+      const previousState = history[currentStep];
+      
+      // Restore all state variables
+      setConnections(previousState.connections);
+      setConnectionPairs(previousState.connectionPairs);
+      setConnectionGroups(previousState.connectionGroups);
+      setTopRowCount(previousState.topRowCount);
+      setBottomRowCount(previousState.bottomRowCount);
+      setEdgeState(previousState.edgeState);
+      
+      // Restore ref values
+      groupMapRef.current = new Map(previousState.groupMap);
+      topOrientation.current = new Map(previousState.topOrientationMap);
+      botOrientation.current = new Map(previousState.botOrientationMap);
+      
+      setHistory(prev => prev.slice(0, -1))
+      setCurrentStep(currentStep - 1);
+    }
   };
 
   /**
@@ -284,7 +260,8 @@ function App() {
         groupMapRef,
         setConnectionGroups,
         connections,
-        setConnections
+        setConnections,
+        connectionPairs
       );
     }
     console.log("topOrientation",topOrientation);
@@ -437,6 +414,20 @@ function App() {
     topOrientation.current.clear();
     botOrientation.current.clear();
     console.log(connectionPairs);
+
+    // Reset history
+    setHistory([{
+      connections: [],
+      connectionPairs: [],
+      connectionGroups: [],
+      topRowCount: 1,
+      bottomRowCount: 1,
+      edgeState: null,
+      groupMap: new Map(),
+      topOrientationMap: new Map(),
+      botOrientationMap: new Map()
+    }]);
+    setCurrentStep(0);
   };
 
   const handleSoundClick = () => {
@@ -509,6 +500,8 @@ function App() {
       setSelectedNodes([]);
       return;
     }
+
+    saveToHistory();
 
     let newColor;
     if (edgeState) {
