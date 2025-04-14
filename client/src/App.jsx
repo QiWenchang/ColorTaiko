@@ -4,7 +4,7 @@ import { generateColor } from "./utils/colorUtils";
 import { drawConnections } from "./utils/drawingUtils";
 import { checkAndGroupConnections } from "./utils/MergeUtils";
 import { calculateProgress } from "./utils/calculateProgress";
-import { checkAndAddNewNodes} from "./utils/checkAndAddNewNodes";
+import { checkAndAddNewNodes } from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
 import { checkOrientation } from "./utils/checkOrientation";
 
@@ -15,9 +15,8 @@ import ErrorModal from "./components/ErrorModal";
 import SettingsMenu from "./components/ToolMenu/settingMenu";
 import ProgressBar from "./components/ProgressBar/progressBar";
 import Title from "./components/title";
-import { useAudio } from './hooks/useAudio';
-import { useSettings } from './hooks/useSetting';
-
+import { useAudio } from "./hooks/useAudio";
+import { useSettings } from "./hooks/useSetting";
 
 function App() {
   // Game state management
@@ -43,89 +42,137 @@ function App() {
   const [startNode, setStartNode] = useState(null);
   const [currentLineEl, setCurrentLineEl] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [level, setLevel] = useState("level")
-
+  const [level, setLevel] = useState("level");
 
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [isDropdownDisabled, setIsDropdownDisabled] = useState(false);
 
-  const [history, setHistory] = useState([{
-    connections: [],
-    connectionPairs: [],
-    connectionGroups: [],
-    topRowCount: 1,
-    bottomRowCount: 1,
-    edgeState: null,
-    groupMap: new Map(),
-    topOrientationMap: new Map(),
-    botOrientationMap: new Map()
-  }]);
+  const [history, setHistory] = useState([
+    {
+      connections: [],
+      connectionPairs: [],
+      connectionGroups: [],
+      topRowCount: 1,
+      bottomRowCount: 1,
+      edgeState: null,
+      groupMap: new Map(),
+      topOrientationMap: new Map(),
+      botOrientationMap: new Map(),
+    },
+  ]);
   const [currentStep, setCurrentStep] = useState(0);
+
+  // Instead of a single log ref, we maintain two:
+  // one for active connections and another for undone connections.
+  const activeConnectionLogRef = useRef([]);
+  const undoneConnectionLogRef = useRef([]);
 
   const handleLevelChange = (event) => {
     setSelectedLevel(event.target.value);
-    setLevel(event.target.value)
-    setIsDropdownDisabled(true); // Disable dropdown after selection
+    setLevel(event.target.value);
+    setIsDropdownDisabled(true); // Disable dropdown after selection.
   };
-  
 
+  // Custom hooks for managing audio and settings.
+  const { clickAudio, errorAudio, connectsuccess, perfectAudio } = useAudio();
+  const {
+    offset,
+    setOffset,
+    soundBool,
+    setSoundBool,
+    blackDotEffect,
+    setBlackDotEffect,
+    lightMode,
+    setLightMode,
+  } = useSettings();
 
-  // Custom hooks for managing audio and settings
-  const { clickAudio, errorAudio, connectsuccess, perfectAudio} = useAudio();
-  const { offset, setOffset, soundBool, setSoundBool, blackDotEffect, setBlackDotEffect,
-          lightMode, setLightMode
-        }  = useSettings();
-
-  // References for SVG elements and connection groups
+  // References for SVG elements and connection groups.
   const [showSettings, setShowSettings] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState(false);
   const [Percent100Message, setPercent100Message] = useState(false);
 
-  // Function to save current state to history
+  // Function to save current state to history.
   const saveToHistory = () => {
-    // Create deep copies of all necessary state
     const newState = {
-      connections: JSON.parse(JSON.stringify(connections)),
-      connectionPairs: JSON.parse(JSON.stringify(connectionPairs)),
-      connectionGroups: JSON.parse(JSON.stringify(connectionGroups)),
+      connections: structuredClone(connections),
+      connectionPairs: structuredClone(connectionPairs),
+      connectionGroups: structuredClone(connectionGroups),
       topRowCount,
       bottomRowCount,
       edgeState,
-      groupMap: new Map(groupMapRef.current),
-      topOrientationMap: new Map(topOrientation.current),
-      botOrientationMap: new Map(botOrientation.current)
+      groupMap: structuredClone(groupMapRef.current),
+      topOrientationMap: structuredClone(topOrientation.current),
+      botOrientationMap: structuredClone(botOrientation.current),
     };
 
-    // Remove any future states if we're in the middle of the history
-    //const newHistory = history.slice(0, currentStep + 1);
-    
     setHistory([...history, newState]);
-    //setHistory((prevHistory) => [...prevHistory.slice(0, currentStep + 1), newState]);
-
     setCurrentStep(currentStep + 1);
   };
 
-
-  // Updated handleUndo function
+  // Updated handleUndo function with console logging before and after undo.
   const handleUndo = () => {
     if (currentStep > 0) {
+      console.log("Before undo:");
+      console.log("connections:", connections);
+      console.log("connectionPairs:", connectionPairs);
+      console.log("connectionGroups:", connectionGroups);
+      console.log(
+        "topRowCount:",
+        topRowCount,
+        "bottomRowCount:",
+        bottomRowCount
+      );
+      console.log("edgeState:", edgeState);
+      console.log("groupMap:", groupMapRef.current);
+      console.log("topOrientation:", topOrientation.current);
+      console.log("botOrientation:", botOrientation.current);
+
       const previousState = history[currentStep];
-      
-      // Restore all state variables
+
+      // Restore state variables.
       setConnections(previousState.connections);
       setConnectionPairs(previousState.connectionPairs);
       setConnectionGroups(previousState.connectionGroups);
       setTopRowCount(previousState.topRowCount);
       setBottomRowCount(previousState.bottomRowCount);
       setEdgeState(previousState.edgeState);
-      
-      // Restore ref values
+
+      // Restore ref values.
       groupMapRef.current = new Map(previousState.groupMap);
       topOrientation.current = new Map(previousState.topOrientationMap);
       botOrientation.current = new Map(previousState.botOrientationMap);
-      
-      setHistory(prev => prev.slice(0, -1))
+
+      setHistory((prev) => prev.slice(0, -1));
       setCurrentStep(currentStep - 1);
+
+      console.log("After undo (restored state):");
+      console.log("connections:", previousState.connections);
+      console.log("connectionPairs:", previousState.connectionPairs);
+      console.log("connectionGroups:", previousState.connectionGroups);
+      console.log(
+        "topRowCount:",
+        previousState.topRowCount,
+        "bottomRowCount:",
+        previousState.bottomRowCount
+      );
+      console.log("edgeState:", previousState.edgeState);
+      console.log("groupMap:", previousState.groupMap);
+      console.log("topOrientation:", previousState.topOrientationMap);
+      console.log("botOrientation:", previousState.botOrientationMap);
+
+      if (activeConnectionLogRef.current.length > 0) {
+        const removedConnection = activeConnectionLogRef.current.pop();
+        undoneConnectionLogRef.current.push(removedConnection);
+        const activeStr = activeConnectionLogRef.current.join(", ");
+        const undoneStr = undoneConnectionLogRef.current
+          .map((conn) => "UNDID " + conn)
+          .join(", ");
+        console.log(
+          `Updated connection order: ${activeStr}${
+            activeStr && undoneStr ? ", " : ""
+          }${undoneStr}`
+        );
+      }
     }
   };
 
@@ -137,56 +184,70 @@ function App() {
       setWelcomeMessage(true);
     }
   }, [topRowCount, bottomRowCount]);
-  
 
   /**
    * Draws connections on the SVG element when related state changes.
    */
   useEffect(() => {
-    drawConnections(svgRef, connections, connectionPairs, offset, topOrientation, botOrientation);
-  }, [connectionGroups, connections, topRowCount, bottomRowCount, connectionPairs, offset]);
+    drawConnections(
+      svgRef,
+      connections,
+      connectionPairs,
+      offset,
+      topOrientation,
+      botOrientation
+    );
+  }, [
+    connectionGroups,
+    connections,
+    topRowCount,
+    bottomRowCount,
+    connectionPairs,
+    offset,
+  ]);
 
   /**
    * Checks if new nodes should be added based on current connections.
    */
   useEffect(() => {
-    checkAndAddNewNodes(topRowCount, bottomRowCount, connections, setTopRowCount, setBottomRowCount);
+    checkAndAddNewNodes(
+      topRowCount,
+      bottomRowCount,
+      connections,
+      setTopRowCount,
+      setBottomRowCount
+    );
   }, [connections, topRowCount, bottomRowCount]);
 
   /**
    * Calculates progress as a percentage based on completed connections.
-   * Play connect success sound when progress increases.
    */
   useEffect(() => {
     const timer = setTimeout(() => {
-      const newProgress = calculateProgress(connections, topRowCount, bottomRowCount);
+      const newProgress = calculateProgress(
+        connections,
+        topRowCount,
+        bottomRowCount
+      );
       setProgress(newProgress);
-  
+
       if (newProgress === 100) {
         setPercent100Message(true);
-        if(soundBool) {
-        perfectAudio.play();
+        if (soundBool) {
+          perfectAudio.play();
         }
       } else if (newProgress > previousProgressRef.current && soundBool) {
-        //console.log("connect success sound");
         connectsuccess.play();
       }
-  
+
       previousProgressRef.current = newProgress;
     }, 100);
-  
+
     return () => clearTimeout(timer);
-
-  }, [connections,topRowCount, bottomRowCount]);
-
-  // useEffect(() => {
-  //   setProgressToShow(calculateProgress(connections, topRowCount, bottomRowCount));
-  // }, [connections, topRowCount, bottomRowCount]);
-
-
+  }, [connections, topRowCount, bottomRowCount]);
 
   /**
-   * Handles window resize events to redraw connections, ensuring layout consistency.
+   * Handles window resize events to redraw connections.
    */
   useEffect(() => {
     const handleResize = () => {
@@ -197,18 +258,11 @@ function App() {
   }, [svgRef, connections, connectionPairs, offset]);
 
   /**
-   * for debugging purposes
+   * Updates the temporary dragging line on mouse move.
    */
-
-  // useEffect(() => {
-  //   console.log("Connections",connections);
-  //   console.log("Connection Pairs",connectionPairs);
-  //   console.log("Connection Groups",groupMapRef);
-  // } , [connections]);
-
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if(isDraggingLine && currentLineEl) {
+      if (isDraggingLine && currentLineEl) {
         const svgRect = svgRef.current.getBoundingClientRect();
         const mouseX = e.clientX - svgRect.left;
         const mouseY = e.clientY - svgRect.top;
@@ -216,13 +270,13 @@ function App() {
         currentLineEl.setAttribute("y2", mouseY);
       }
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [isDraggingLine, currentLineEl]);
 
   useEffect(() => {
     const handleMouseUp = () => {
-      if(isDraggingLine && !selectedNodes[1]) {
+      if (isDraggingLine && !selectedNodes[1]) {
         if (currentLineEl && svgRef.current.contains(currentLineEl)) {
           svgRef.current.removeChild(currentLineEl);
         }
@@ -231,26 +285,27 @@ function App() {
         setCurrentLineEl(null);
       }
     };
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => window.removeEventListener('mouseup', handleMouseUp);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
   }, [isDraggingLine, currentLineEl, selectedNodes]);
-  
+
   /**
    * Groups connections when a new connection pair is completed.
    */
   useEffect(() => {
     const latestPair = connectionPairs[connectionPairs.length - 1];
-    // if(groupMapRef.current.size === 0) {
-
-    // }
-
     if (latestPair && latestPair.length === 2) {
-      if(level === "Level 2") {
-        const a = checkOrientation(latestPair, groupMapRef, topOrientation, botOrientation);
-        if(a == -1){
+      if (level === "Level 2") {
+        const a = checkOrientation(
+          latestPair,
+          groupMapRef,
+          topOrientation,
+          botOrientation
+        );
+        if (a === -1) {
           setErrorMessage("Orientation condition failed!");
           setSelectedNodes([]);
-          handleUndo()
+          handleUndo();
           return;
         }
       }
@@ -264,34 +319,10 @@ function App() {
         connectionPairs
       );
     }
-    console.log("topOrientation",topOrientation);
-    console.log("botOrientation",botOrientation);
-    console.log("groupMapRef",groupMapRef);
+    console.log("topOrientation", topOrientation);
+    console.log("botOrientation", botOrientation);
+    console.log("groupMapRef", groupMapRef);
   }, [connectionPairs]);
-
-  // useEffect(() => {
-  //   const latestPair = connectionPairs[connectionPairs.length - 1];)
-  //   if (latestPair && latestPair.length === 2){
-  //     checkOrientation(latestPair, groupMapRef, topOrientation, botOrientation);
-  //     if(checkOrientation(latestPair, groupMapRef, topOrientation, botOrientation) == 1){
-  //       setErrorMessage("Flip");
-  //     } else if (checkOrientation(latestPair, groupMapRef, topOrientation, botOrientation) == 2){
-  //       setErrorMessage("Gnorw");
-  //     }
-  //   }
-
-  //   console.log(topOrientation);
-  //   console.log(botOrientation);
-  // }, [connectionPairs]);
-
-  // useEffect(() => {
-  //   if(level === "level1") {
-  //     setLevel("level2")
-  //   }
-  //   else {
-  //     setLevel("level1")
-  //   }
-  // }, [level])
 
   const createTopRow = (count) =>
     Array.from({ length: count }, (_, i) => (
@@ -327,75 +358,64 @@ function App() {
       />
     ));
 
-    const handleNodeClick = (nodeId) => {
-      setErrorMessage("");
-    
-      // Play click audio if sound is enabled
-      if (soundBool) clickAudio.play();
+  // Updated node click handler to avoid duplicate tryConnect calls.
+  const handleNodeClick = (nodeId) => {
+    setErrorMessage("");
 
-      if(selectedLevel == null) {
-        setErrorMessage("Please select a level and try again!!!!")
-      }
-      else {
+    if (soundBool) clickAudio.play();
 
-      
-    
-      // If the node is already selected, deselect it and clear highlights
-      if (selectedNodes.includes(nodeId)) {
-        setSelectedNodes(selectedNodes.filter((id) => id !== nodeId));
-        setHighlightedNodes([]); // Clear highlighted nodes
-      }
-      // If less than 2 nodes are selected, process the selection
-      else if (selectedNodes.length < 2) {
-        const newSelectedNodes = [...selectedNodes, nodeId];
-        setSelectedNodes(newSelectedNodes);
-    
-        // If one node is selected, highlight connected nodes
-        if (newSelectedNodes.length === 1) {
-          const connectedNodes = getConnectedNodes(nodeId, connectionPairs); // Use refined utility function
-          setHighlightedNodes(connectedNodes); // Highlight nodes connected to the first selected node
-          setIsDraggingLine(true);
-          setStartNode(nodeId);
-      
-          const nodeElem = document.getElementById(nodeId);
-          const nodeRect = nodeElem.getBoundingClientRect();
-          const svgRect = svgRef.current.getBoundingClientRect();
-          const startX = nodeRect.left + nodeRect.width/2 - svgRect.left;
-          const startY = nodeRect.top + nodeRect.height/2 - svgRect.top;
-          
-          const line = document.createElementNS("http://www.w3.org/2000/svg","line");
-          line.setAttribute("x1", startX);
-          line.setAttribute("y1", startY);
-          line.setAttribute("x2", startX);
-          line.setAttribute("y2", startY);
-          line.setAttribute("stroke","gray");
-          line.setAttribute("stroke-width","2");
-          line.setAttribute("stroke-dasharray","5,5");
-      
-          svgRef.current.appendChild(line);
-          setCurrentLineEl(line);
-        }
-        if (selectedNodes.length === 2 && isDraggingLine && startNode) {
-
-          tryConnect(newSelectedNodes);
-          if (currentLineEl && svgRef.current.contains(currentLineEl)) {
-            svgRef.current.removeChild(currentLineEl);
-          }
-          setIsDraggingLine(false);
-          setStartNode(null);
-          setCurrentLineEl(null);
-          setSelectedNodes([]);
-          setHighlightedNodes([]); // Clear highlights after a connection attempt
-        }
-        // If two nodes are selected, attempt a connection
-        if (newSelectedNodes.length === 2) {
-          
-          tryConnect(newSelectedNodes);
-          setHighlightedNodes([]); // Clear highlights after a connection attempt
-        }
-      }
+    if (!selectedLevel) {
+      setErrorMessage("Please select a level and try again!!!!");
+      return;
     }
-    };
+
+    // Deselect if node is already selected.
+    if (selectedNodes.includes(nodeId)) {
+      setSelectedNodes(selectedNodes.filter((id) => id !== nodeId));
+      setHighlightedNodes([]);
+      return;
+    }
+
+    const newSelectedNodes = [...selectedNodes, nodeId];
+    setSelectedNodes(newSelectedNodes);
+
+    if (newSelectedNodes.length === 1) {
+      const connectedNodes = getConnectedNodes(nodeId, connectionPairs);
+      setHighlightedNodes(connectedNodes);
+      setIsDraggingLine(true);
+      setStartNode(nodeId);
+
+      const nodeElem = document.getElementById(nodeId);
+      const nodeRect = nodeElem.getBoundingClientRect();
+      const svgRect = svgRef.current.getBoundingClientRect();
+      const startX = nodeRect.left + nodeRect.width / 2 - svgRect.left;
+      const startY = nodeRect.top + nodeRect.height / 2 - svgRect.top;
+
+      const line = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+      );
+      line.setAttribute("x1", startX);
+      line.setAttribute("y1", startY);
+      line.setAttribute("x2", startX);
+      line.setAttribute("y2", startY);
+      line.setAttribute("stroke", "gray");
+      line.setAttribute("stroke-width", "2");
+      line.setAttribute("stroke-dasharray", "5,5");
+
+      svgRef.current.appendChild(line);
+      setCurrentLineEl(line);
+    } else if (newSelectedNodes.length === 2) {
+      if (currentLineEl && svgRef.current.contains(currentLineEl)) {
+        svgRef.current.removeChild(currentLineEl);
+      }
+      setIsDraggingLine(false);
+      setStartNode(null);
+      tryConnect(newSelectedNodes);
+      setSelectedNodes([]);
+      setHighlightedNodes([]);
+    }
+  };
 
   const handleToolMenuClick = () => setShowSettings((prev) => !prev);
 
@@ -413,32 +433,33 @@ function App() {
     groupMapRef.current.clear();
     topOrientation.current.clear();
     botOrientation.current.clear();
-    console.log(connectionPairs);
 
-    // Reset history
-    setHistory([{
-      connections: [],
-      connectionPairs: [],
-      connectionGroups: [],
-      topRowCount: 1,
-      bottomRowCount: 1,
-      edgeState: null,
-      groupMap: new Map(),
-      topOrientationMap: new Map(),
-      botOrientationMap: new Map()
-    }]);
+    // Reset history and both connection logs.
+    setHistory([
+      {
+        connections: [],
+        connectionPairs: [],
+        connectionGroups: [],
+        topRowCount: 1,
+        bottomRowCount: 1,
+        edgeState: null,
+        groupMap: new Map(),
+        topOrientationMap: new Map(),
+        botOrientationMap: new Map(),
+      },
+    ]);
     setCurrentStep(0);
+    activeConnectionLogRef.current = [];
+    undoneConnectionLogRef.current = [];
   };
 
   const handleSoundClick = () => {
-    // Toggle the soundBool
     setSoundBool((prev) => !prev);
-
   };
 
   const handleOffsetChange = (newOffset) => {
     setOffset(newOffset);
-    localStorage.setItem("offset", newOffset); //store to localStorage
+    localStorage.setItem("offset", newOffset);
   };
 
   const toggleBlackDotEffect = () => {
@@ -449,10 +470,10 @@ function App() {
     setLightMode((prevMode) => !prevMode);
   };
 
-
   const tryConnect = (nodes) => {
     if (nodes.length !== 2) return;
     let [node1, node2] = nodes;
+
     const isTopNode = (id) => id.startsWith("top");
     const isBottomNode = (id) => id.startsWith("bottom");
 
@@ -464,9 +485,7 @@ function App() {
       (isTopNode(node1) && isTopNode(node2)) ||
       (isBottomNode(node1) && isBottomNode(node2))
     ) {
-      if(soundBool) {
-        errorAudio.play();
-      }
+      if (soundBool) errorAudio.play();
       setErrorMessage("Can't connect two vertices from the same row.");
       setSelectedNodes([]);
       return;
@@ -477,11 +496,8 @@ function App() {
         (conn.nodes.includes(node1) && conn.nodes.includes(node2)) ||
         (conn.nodes.includes(node2) && conn.nodes.includes(node1))
     );
-
     if (isDuplicate) {
-      if(soundBool) {
-        errorAudio.play();
-      }
+      if (soundBool) errorAudio.play();
       setErrorMessage("These vertices are already connected.");
       setSelectedNodes([]);
       return;
@@ -491,9 +507,7 @@ function App() {
       edgeState &&
       (edgeState.nodes.includes(node1) || edgeState.nodes.includes(node2))
     ) {
-      if(soundBool) {
-        errorAudio.play();
-      }
+      if (soundBool) errorAudio.play();
       setErrorMessage(
         "Two vertical edges in each pair should not share a common vertex"
       );
@@ -501,11 +515,11 @@ function App() {
       return;
     }
 
+    // Save current state before updating.
     saveToHistory();
 
     let newColor;
     if (edgeState) {
-      // If there is a pending edge, use the same color and create a pair
       newColor = edgeState.color;
       const newConnection = {
         nodes: [node1, node2],
@@ -516,46 +530,53 @@ function App() {
         const lastPair = prevPairs[prevPairs.length - 1];
         let updatedPairs;
         if (lastPair && lastPair.length === 1) {
-          // If the last pair has one connection, complete it
           updatedPairs = [
             ...prevPairs.slice(0, -1),
             [...lastPair, newConnection],
           ];
         } else {
-          // Otherwise, create a new pair
           updatedPairs = [...prevPairs, [edgeState, newConnection]];
         }
         return updatedPairs;
       });
-      //.log(connectionPairs);
       setEdgeState(null);
+
+      const connectionStr = `${node1} -> ${node2}`;
+      activeConnectionLogRef.current.push(connectionStr);
+      console.log(`Added connection: ${connectionStr}`);
+      console.log(
+        `Updated connection order: ${activeConnectionLogRef.current.join(", ")}`
+      );
     } else {
-      // If no pending edge, create a new edge and add to edgeState
       newColor = generateColor(currentColor, setCurrentColor, connectionPairs);
-      //console.log("newColor: ", newColor);
-      //console.log(newColor);
       const newConnection = {
         nodes: [node1, node2],
         color: newColor,
       };
       setConnections([...connections, newConnection]);
-      // Create a new pair and add to the connection pairs
       setConnectionPairs([...connectionPairs, [newConnection]]);
       setEdgeState(newConnection);
+
+      const connectionStr = `${node1} -> ${node2} (pending pair)`;
+      activeConnectionLogRef.current.push(connectionStr);
+      console.log(`Added connection: ${connectionStr}`);
+      console.log(
+        `Updated connection order: ${activeConnectionLogRef.current.join(", ")}`
+      );
     }
     setSelectedNodes([]);
   };
-  
 
   if (lightMode) {
-    document.body.classList.add('light-mode');
+    document.body.classList.add("light-mode");
   } else {
-    document.body.classList.remove('light-mode');
+    document.body.classList.remove("light-mode");
   }
+
   return (
-    <div className={`app-container ${lightMode ? 'light-mode' : 'dark-mode'}`}>
+    <div className={`app-container ${lightMode ? "light-mode" : "dark-mode"}`}>
       <Title />
-  
+
       <ProgressBar
         progress={progress}
         connections={connections}
@@ -563,22 +584,24 @@ function App() {
         bottomRowCount={bottomRowCount}
         lightMode={lightMode}
       />
-  
+
       {welcomeMessage && (
-        <div className="welcome-message fade-message">Connect the vertices!</div>
+        <div className="welcome-message fade-message">
+          Connect the vertices!
+        </div>
       )}
 
       {Percent100Message && (
         <div className="welcome-message fade-message">You did it! 100%!</div>
       )}
-  
+
       <img
         src={SettingIconImage}
         alt="Settings Icon"
         className="icon"
-        onClick={handleToolMenuClick}
+        onClick={() => setShowSettings((prev) => !prev)}
       />
-  
+
       {showSettings && (
         <SettingsMenu
           offset={offset}
@@ -591,15 +614,14 @@ function App() {
           onToggleLightMode={toggleLightMode}
         />
       )}
-  
 
-    <button onClick={handleClear} className="clear-button">
-      Clear
-    </button>
-    <button onClick={handleUndo} className="undo-button">
-      Undo
-    </button>
-    {!selectedLevel ? (
+      <button onClick={handleClear} className="clear-button">
+        Clear
+      </button>
+      <button onClick={handleUndo} className="undo-button">
+        Undo
+      </button>
+      {!selectedLevel ? (
         <div className="level-selector">
           <select
             id="level-dropdown"
@@ -617,27 +639,27 @@ function App() {
       ) : (
         <div
           className="level-selected"
-          style={{ color: lightMode ? 'black' : 'white' }}
+          style={{ color: lightMode ? "black" : "white" }}
         >
           Selected Level: {selectedLevel}
         </div>
-
       )}
-   
- 
+
       <ErrorModal
         className="error-container"
         message={errorMessage}
         onClose={() => setErrorMessage("")}
       />
-  
+
       {showNodes && (
-      <div className="game-box">
-        <div className="game-row">{createTopRow(topRowCount)}</div>
+        <div className="game-box">
+          <div className="game-row">{createTopRow(topRowCount)}</div>
           <svg ref={svgRef} className="svg-overlay" />
-        <div className="game-row bottom-row">{createBottomRow(bottomRowCount)}</div>
-      </div>
-    )}
+          <div className="game-row bottom-row">
+            {createBottomRow(bottomRowCount)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
