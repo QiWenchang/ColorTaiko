@@ -62,10 +62,9 @@ function App() {
   ]);
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Instead of a single log ref, we maintain two:
-  // one for active connections and another for undone connections.
-  const activeConnectionLogRef = useRef([]);
-  const undoneConnectionLogRef = useRef([]);
+  // Maintain an append‑only log of connection actions.
+  // Each entry is an object: { type: "connect"|"undo", conn: "..." }
+  const connectionLogRef = useRef([]);
 
   const handleLevelChange = (event) => {
     setSelectedLevel(event.target.value);
@@ -109,7 +108,17 @@ function App() {
     setCurrentStep(currentStep + 1);
   };
 
-  // Updated handleUndo function with console logging before and after undo.
+  // Helper to print the full connection log.
+  const printFullConnectionLog = () => {
+    const fullLog = connectionLogRef.current
+      .map((entry) =>
+        entry.type === "undo" ? `UNDID ${entry.conn}` : entry.conn
+      )
+      .join(", ");
+    console.log(`Updated connection order: ${fullLog}`);
+  };
+
+  // Updated handleUndo function with console logging.
   const handleUndo = () => {
     if (currentStep > 0) {
       console.log("Before undo:");
@@ -160,18 +169,20 @@ function App() {
       console.log("topOrientation:", previousState.topOrientationMap);
       console.log("botOrientation:", previousState.botOrientationMap);
 
-      if (activeConnectionLogRef.current.length > 0) {
-        const removedConnection = activeConnectionLogRef.current.pop();
-        undoneConnectionLogRef.current.push(removedConnection);
-        const activeStr = activeConnectionLogRef.current.join(", ");
-        const undoneStr = undoneConnectionLogRef.current
-          .map((conn) => "UNDID " + conn)
-          .join(", ");
-        console.log(
-          `Updated connection order: ${activeStr}${
-            activeStr && undoneStr ? ", " : ""
-          }${undoneStr}`
-        );
+      // Find the last "connect" entry that is considered active.
+      // We scan backwards and assume the most recent connect is the one to undo.
+      let lastIndex = -1;
+      for (let i = connectionLogRef.current.length - 1; i >= 0; i--) {
+        if (connectionLogRef.current[i].type === "connect") {
+          lastIndex = i;
+          break;
+        }
+      }
+      // Append an "undo" record for that connection, leaving the previous connect entry intact.
+      if (lastIndex !== -1) {
+        const connStr = connectionLogRef.current[lastIndex].conn;
+        connectionLogRef.current.push({ type: "undo", conn: connStr });
+        printFullConnectionLog();
       }
     }
   };
@@ -242,7 +253,6 @@ function App() {
 
       previousProgressRef.current = newProgress;
     }, 100);
-
     return () => clearTimeout(timer);
   }, [connections, topRowCount, bottomRowCount]);
 
@@ -309,7 +319,6 @@ function App() {
           return;
         }
       }
-
       checkAndGroupConnections(
         latestPair,
         groupMapRef,
@@ -358,7 +367,7 @@ function App() {
       />
     ));
 
-  // Updated node click handler to avoid duplicate tryConnect calls.
+  // Updated node click handler.
   const handleNodeClick = (nodeId) => {
     setErrorMessage("");
 
@@ -434,7 +443,7 @@ function App() {
     topOrientation.current.clear();
     botOrientation.current.clear();
 
-    // Reset history and both connection logs.
+    // Reset history and clear the connection log.
     setHistory([
       {
         connections: [],
@@ -449,8 +458,7 @@ function App() {
       },
     ]);
     setCurrentStep(0);
-    activeConnectionLogRef.current = [];
-    undoneConnectionLogRef.current = [];
+    connectionLogRef.current = [];
   };
 
   const handleSoundClick = () => {
@@ -521,10 +529,7 @@ function App() {
     let newColor;
     if (edgeState) {
       newColor = edgeState.color;
-      const newConnection = {
-        nodes: [node1, node2],
-        color: newColor,
-      };
+      const newConnection = { nodes: [node1, node2], color: newColor };
       setConnections([...connections, newConnection]);
       setConnectionPairs((prevPairs) => {
         const lastPair = prevPairs[prevPairs.length - 1];
@@ -541,28 +546,22 @@ function App() {
       });
       setEdgeState(null);
 
+      // Always record connection without pending text.
       const connectionStr = `${node1} -> ${node2}`;
-      activeConnectionLogRef.current.push(connectionStr);
+      connectionLogRef.current.push({ type: "connect", conn: connectionStr });
       console.log(`Added connection: ${connectionStr}`);
-      console.log(
-        `Updated connection order: ${activeConnectionLogRef.current.join(", ")}`
-      );
+      printFullConnectionLog();
     } else {
       newColor = generateColor(currentColor, setCurrentColor, connectionPairs);
-      const newConnection = {
-        nodes: [node1, node2],
-        color: newColor,
-      };
+      const newConnection = { nodes: [node1, node2], color: newColor };
       setConnections([...connections, newConnection]);
       setConnectionPairs([...connectionPairs, [newConnection]]);
       setEdgeState(newConnection);
 
-      const connectionStr = `${node1} -> ${node2} (pending pair)`;
-      activeConnectionLogRef.current.push(connectionStr);
+      const connectionStr = `${node1} -> ${node2}`;
+      connectionLogRef.current.push({ type: "connect", conn: connectionStr });
       console.log(`Added connection: ${connectionStr}`);
-      console.log(
-        `Updated connection order: ${activeConnectionLogRef.current.join(", ")}`
-      );
+      printFullConnectionLog();
     }
     setSelectedNodes([]);
   };
@@ -576,7 +575,6 @@ function App() {
   return (
     <div className={`app-container ${lightMode ? "light-mode" : "dark-mode"}`}>
       <Title />
-
       <ProgressBar
         progress={progress}
         connections={connections}
@@ -584,24 +582,20 @@ function App() {
         bottomRowCount={bottomRowCount}
         lightMode={lightMode}
       />
-
       {welcomeMessage && (
         <div className="welcome-message fade-message">
           Connect the vertices!
         </div>
       )}
-
       {Percent100Message && (
         <div className="welcome-message fade-message">You did it! 100%!</div>
       )}
-
       <img
         src={SettingIconImage}
         alt="Settings Icon"
         className="icon"
         onClick={() => setShowSettings((prev) => !prev)}
       />
-
       {showSettings && (
         <SettingsMenu
           offset={offset}
@@ -614,7 +608,6 @@ function App() {
           onToggleLightMode={toggleLightMode}
         />
       )}
-
       <button onClick={handleClear} className="clear-button">
         Clear
       </button>
@@ -644,13 +637,11 @@ function App() {
           Selected Level: {selectedLevel}
         </div>
       )}
-
       <ErrorModal
         className="error-container"
         message={errorMessage}
         onClose={() => setErrorMessage("")}
       />
-
       {showNodes && (
         <div className="game-box">
           <div className="game-row">{createTopRow(topRowCount)}</div>
