@@ -1,42 +1,69 @@
-import { Graph, alg } from '@dagrejs/graphlib'
+function findAllCycles(adjList) {
+    const cycles = new Set();
+    const visited = new Set();
+  
+    function dfs(path, node, parent) {
+      path.push(node);
+      visited.add(node);
+  
+      for (const neighbor of adjList[node] || []) {
+        if (neighbor === parent) continue; // skip the edge we came from
+  
+        const indexInPath = path.indexOf(neighbor);
+        if (indexInPath !== -1) {
+          // found a cycle
+          const cycle = path.slice(indexInPath);
+          const normalized = [...cycle].sort().join(',');
+          cycles.add(normalized); // store as sorted string to avoid duplicates
+        } else {
+          dfs([...path], neighbor, node);
+        }
+      }
+    }
+  
+    for (const node in adjList) {
+      dfs([], node, null);
+    }
+  
+    return Array.from(cycles).map(str => str.split(','));
+}
+  
 
+export function checkGirth(topOrientationRef, botOrientationRef) {
 
-// // src/utils/checkOrientation.js
-// import { Graph, alg } from '@dagrejs/graphlib';
+  for (const oriMap of [topOrientationRef.current, botOrientationRef.current]) {
+    // getting all the edges
+    const edges = [];
+    oriMap.forEach((_, horizontalEdge) => {
+      const [node1, node2] = horizontalEdge.split(',');
+      edges.push([node1, node2])
+    });
+    console.log("graph edges: ", edges);
 
-// export function checkOrientation(latestPair, groupMapRef, topOrientationRef, botOrientationRef) {
-//   const { findCycles } = alg;
+    // cycle detection using the custom DFS
+    const adjList = {};
+    for (const [u, v] of edges) {
+        if (!adjList[u]) adjList[u] = [];
+        if (!adjList[v]) adjList[v] = [];
+        adjList[u].push(v);
+        adjList[v].push(u); // undirected!
+    }
+    
+    const cycles = findAllCycles(adjList);
+    console.log("cycles: ", cycles);
 
-//   // 1) Add this new orientation edge into the appropriate map
-//   const newConn = latestPair[1];
-//   const [u, v] = newConn.nodes;
-//   const orientationRef = u.startsWith('top') ? topOrientationRef : botOrientationRef;
-//   orientationRef.current.set(u, v);
+    // c) find all simple cycles
+    if (cycles.length === 0) continue;
 
-//   // 2) For both the top‐row and bottom‐row orientation maps…
-//   for (const oriMap of [topOrientationRef.current, botOrientationRef.current]) {
-//     // a) build a directed Graph
-//     const g = new Graph({ directed: true });
-//     // b) add every vertex and edge
-//     oriMap.forEach((to, from) => {
-//       g.setNode(from);
-//       g.setNode(to);
-//       g.setEdge(from, to);
-//     });
+    // d) scan for any cycle < 4 nodes
+    for (const cycle of cycles) {
+      if (cycle.length < 4) {
+        // too short—signal failure
+        return -1;
+      }
+    }
+  }
 
-//     // c) find all simple cycles
-//     const cycles = findCycles(g);
-//     if (cycles.length === 0) continue;
-
-//     // d) scan for any cycle < 4 nodes
-//     for (const cycle of cycles) {
-//       if (cycle.length < 4) {
-//         // too short—signal failure
-//         return -1;
-//       }
-//     }
-//   }
-
-//   // no bad cycles found
-//   return 1;
-// }
+  // no bad cycles found
+  return 1;
+}
