@@ -18,6 +18,8 @@ import Title from "./components/title";
 import { useAudio } from "./hooks/useAudio";
 import { useSettings } from "./hooks/useSetting";
 
+import {checkGirth} from "./utils/girth"
+
 function App() {
   // Game state management
   const [topRowCount, setTopRowCount] = useState(1);
@@ -314,6 +316,17 @@ function App() {
         );
         if (a === -1) {
           setErrorMessage("Orientation condition failed!");
+          setSelectedNodes([]);
+          handleUndo();
+          return;
+        }
+        const hasGirthSmallerThan4 = checkGirth(
+          topOrientation,
+          botOrientation,
+        );
+        console.log("Girth Condition Check", hasGirthSmallerThan4);
+        if (hasGirthSmallerThan4 == -1) {
+          setErrorMessage("Girth length should be at least 4!");
           setSelectedNodes([]);
           handleUndo();
           return;
