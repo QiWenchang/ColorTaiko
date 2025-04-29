@@ -326,7 +326,7 @@ function App() {
         );
         console.log("Girth Condition Check", hasGirthSmallerThan4);
         if (hasGirthSmallerThan4 == -1) {
-          setErrorMessage("Girth condition failed!");
+          setErrorMessage("Girth length should be at least 4!");
           setSelectedNodes([]);
           handleUndo();
           return;
