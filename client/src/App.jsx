@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 import { generateColor } from "./utils/colorUtils";
 import { drawConnections } from "./utils/drawingUtils";
@@ -6,7 +6,7 @@ import { checkAndGroupConnections } from "./utils/MergeUtils";
 import { calculateProgress } from "./utils/calculateProgress";
 import { checkAndAddNewNodes } from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
-import { checkOrientation } from "./utils/checkOrientation";
+// import { checkOrientation } from "./utils/checkOrientation";
 
 import SettingIconImage from "./assets/setting-icon.png";
 
@@ -18,7 +18,8 @@ import Title from "./components/title";
 import { useAudio } from "./hooks/useAudio";
 import { useSettings } from "./hooks/useSetting";
 
-import {checkGirth} from "./utils/girth"
+// import {checkGirth} from "./utils/girth"
+import { runLevelChecks } from "./utils/levels";
 
 function App() {
   // Game state management
@@ -41,9 +42,7 @@ function App() {
   const botOrientation = useRef(new Map());
 
   const [isDraggingLine, setIsDraggingLine] = useState(false);
-  const [startNode, setStartNode] = useState(null);
   const [currentLineEl, setCurrentLineEl] = useState(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [level, setLevel] = useState("level");
 
   const [selectedLevel, setSelectedLevel] = useState(null);
@@ -111,17 +110,17 @@ function App() {
   };
 
   // Helper to print the full connection log.
-  const printFullConnectionLog = () => {
+  const printFullConnectionLog = useCallback(() => {
     const fullLog = connectionLogRef.current
       .map((entry) =>
         entry.type === "undo" ? `UNDID ${entry.conn}` : entry.conn
       )
       .join(", ");
     console.log(`Updated connection order: ${fullLog}`);
-  };
+  }, []);
 
   // Updated handleUndo function with console logging.
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     if (currentStep > 0) {
       console.log("Before undo:");
       console.log("connections:", connections);
@@ -187,7 +186,17 @@ function App() {
         printFullConnectionLog();
       }
     }
-  };
+  }, [
+    currentStep,
+    connections,
+    connectionPairs,
+    connectionGroups,
+    topRowCount,
+    bottomRowCount,
+    edgeState,
+    history,
+    printFullConnectionLog,
+  ]);
 
   /**
    * Sets welcome message visibility based on the number of nodes in each row.
@@ -256,7 +265,7 @@ function App() {
       previousProgressRef.current = newProgress;
     }, 100);
     return () => clearTimeout(timer);
-  }, [connections, topRowCount, bottomRowCount]);
+  }, [connections, topRowCount, bottomRowCount, soundBool, perfectAudio, connectsuccess]);
 
   /**
    * Handles window resize events to redraw connections.
@@ -293,7 +302,7 @@ function App() {
           svgRef.current.removeChild(currentLineEl);
         }
         setIsDraggingLine(false);
-        setStartNode(null);
+  // setStartNode(null);
         setCurrentLineEl(null);
       }
     };
@@ -307,30 +316,21 @@ function App() {
   useEffect(() => {
     const latestPair = connectionPairs[connectionPairs.length - 1];
     if (latestPair && latestPair.length === 2) {
-      if (level === "Level 2") {
-        const a = checkOrientation(
-          latestPair,
-          groupMapRef,
-          topOrientation,
-          botOrientation
-        );
-        if (a === -1) {
-          setErrorMessage("Orientation condition failed!");
-          setSelectedNodes([]);
-          handleUndo();
-          return;
-        }
-        const hasGirthSmallerThan4 = checkGirth(
-          topOrientation,
-          botOrientation,
-        );
-        console.log("Girth Condition Check", hasGirthSmallerThan4);
-        if (hasGirthSmallerThan4 == -1) {
-          setErrorMessage("Girth length should be at least 4!");
-          setSelectedNodes([]);
-          handleUndo();
-          return;
-        }
+      // Unified level checks: run all constraints for the selected level
+      const validation = runLevelChecks(level, latestPair, {
+        groupMapRef,
+        topOrientation,
+        botOrientation,
+        connections,
+        connectionPairs,
+        topRowCount,
+        bottomRowCount,
+      });
+      if (!validation.ok) {
+        setErrorMessage(validation.message || "Level condition failed!");
+        setSelectedNodes([]);
+        handleUndo();
+        return;
       }
       checkAndGroupConnections(
         latestPair,
@@ -344,7 +344,7 @@ function App() {
     console.log("topOrientation", topOrientation);
     console.log("botOrientation", botOrientation);
     console.log("groupMapRef", groupMapRef);
-  }, [connectionPairs]);
+  }, [connectionPairs, level, connections, topRowCount, bottomRowCount, handleUndo]);
 
   const createTopRow = (count) =>
     Array.from({ length: count }, (_, i) => (
@@ -405,7 +405,7 @@ function App() {
       const connectedNodes = getConnectedNodes(nodeId, connectionPairs);
       setHighlightedNodes(connectedNodes);
       setIsDraggingLine(true);
-      setStartNode(nodeId);
+  // setStartNode(nodeId);
 
       const nodeElem = document.getElementById(nodeId);
       const nodeRect = nodeElem.getBoundingClientRect();
@@ -432,14 +432,13 @@ function App() {
         svgRef.current.removeChild(currentLineEl);
       }
       setIsDraggingLine(false);
-      setStartNode(null);
       tryConnect(newSelectedNodes);
       setSelectedNodes([]);
       setHighlightedNodes([]);
     }
   };
 
-  const handleToolMenuClick = () => setShowSettings((prev) => !prev);
+  // const handleToolMenuClick = () => setShowSettings((prev) => !prev);
 
   const handleClear = () => {
     setConnectionPairs([]);
@@ -640,6 +639,9 @@ function App() {
             </option>
             <option value="Level 1">Level 1</option>
             <option value="Level 2">Level 2</option>
+            <option value="Level 3">Level 3</option>
+            <option value="Level 4NP">Level 4NP</option>
+            <option value="Level 4.6">Level 4.6</option>
           </select>
         </div>
       ) : (
