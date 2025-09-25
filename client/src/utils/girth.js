@@ -29,7 +29,7 @@ function findAllCycles(adjList) {
 }
   
 
-export function checkGirth(topOrientationRef, botOrientationRef) {
+export function checkGirth(topOrientationRef, botOrientationRef, minGirth = 4) {
 
   for (const oriMap of [topOrientationRef.current, botOrientationRef.current]) {
     // getting all the edges
@@ -55,9 +55,9 @@ export function checkGirth(topOrientationRef, botOrientationRef) {
     // c) find all simple cycles
     if (cycles.length === 0) continue;
 
-    // d) scan for any cycle < 4 nodes
+    // d) scan for any cycle < minGirth nodes
     for (const cycle of cycles) {
-      if (cycle.length < 4) {
+      if (cycle.length < minGirth) {
         // too short—signal failure
         return -1;
       }
