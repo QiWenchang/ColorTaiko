@@ -12,7 +12,8 @@ const orientationCheck = (latestPair, ctx) => {
     latestPair,
     ctx.groupMapRef,
     ctx.topOrientation,
-    ctx.botOrientation
+    ctx.botOrientation,
+    { patternLog: ctx.patternLog }
   );
   if (res === -1) return { ok: false, message: "Orientation condition failed!" };
   return { ok: true };

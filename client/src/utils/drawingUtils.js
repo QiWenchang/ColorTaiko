@@ -5,7 +5,15 @@
  * @param {Array} connectionPairs - Array of connection pairs to be drawn with curved paths.
  * @param {number} offset - Distance to offset connection lines from node centers.
  */
-export const drawConnections = (svgRef, connections, connectionPairs, offset, topOrientation, botOrientation, arrowOptions = { color: "red", size: 10 }) => {
+export const drawConnections = (
+  svgRef,
+  connections,
+  connectionPairs,
+  offset,
+  topOrientation,
+  botOrientation,
+  arrowOptions = { size: 10 }
+) => {
   if (!svgRef.current) return;
 
   // Clear existing connections by removing all child elements of the SVG
@@ -155,29 +163,23 @@ export const drawConnections = (svgRef, connections, connectionPairs, offset, to
         const tangentPoint2 = path.getPointAtLength(pathLength / 2 + 1);
         const tangentAngle = Math.atan2(tangentPoint2.y - tangentPoint1.y, tangentPoint2.x - tangentPoint1.x) * (180 / Math.PI);
 
-        // Create arrow
-        const arrow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-        const arrowSize = 10; // Arrow size
-        let arrowPoints;
-        if (orientation === "right") {
-          arrowPoints = `
-            ${midX},${midY - arrowSize} 
-            ${midX - arrowSize},${midY} 
-            ${midX},${midY + arrowSize}`;
-        } else if (orientation === "left") {
-          arrowPoints = `
-            ${midX},${midY - arrowSize} 
-            ${midX + arrowSize},${midY} 
-            ${midX},${midY + arrowSize}`;
-        } else {
-         
+        let arrow = null;
+        if (orientation === "right" || orientation === "left") {
+          arrow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          const arrowSize = arrowOptions?.size ?? 10;
+          const horizontalOffset = orientation === "right" ? -arrowSize : arrowSize;
+          const arrowPoints = [
+            `${midX},${midY - arrowSize}`,
+            `${midX + horizontalOffset},${midY}`,
+            `${midX},${midY + arrowSize}`,
+          ].join(" ");
+          arrow.setAttribute("points", arrowPoints);
+          arrow.setAttribute("fill", arrowOptions?.color ?? color);
+          arrow.setAttribute(
+            "transform",
+            `rotate(${tangentAngle}, ${midX}, ${midY})`
+          );
         }
-        arrow.setAttribute("points", arrowPoints);
-        arrow.setAttribute("fill", color);
-        arrow.setAttribute(
-          "transform",
-          `rotate(${tangentAngle}, ${midX}, ${midY})`
-        );
   
         return { path, arrow };
 
@@ -192,7 +194,9 @@ export const drawConnections = (svgRef, connections, connectionPairs, offset, to
       );
       if (topCurve) {
         svgRef.current.appendChild(topCurve.path);
-        svgRef.current.appendChild(topCurve.arrow);
+        if (topCurve.arrow) {
+          svgRef.current.appendChild(topCurve.arrow);
+        }
       }
   
       const bottomCurve = createCurvedPath(
@@ -203,7 +207,9 @@ export const drawConnections = (svgRef, connections, connectionPairs, offset, to
       );
       if (bottomCurve) {
         svgRef.current.appendChild(bottomCurve.path);
-        svgRef.current.appendChild(bottomCurve.arrow);
+        if (bottomCurve.arrow) {
+          svgRef.current.appendChild(bottomCurve.arrow);
+        }
       }
     }
   });

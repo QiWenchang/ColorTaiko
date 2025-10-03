@@ -1,4 +1,13 @@
-export const checkOrientation = (newPair, groupMapRef, topOrientation, botOrientation) => {
+import { updatePatternLogOrientations } from "./patternLog";
+
+export const checkOrientation = (
+    newPair,
+    groupMapRef,
+    topOrientation,
+    botOrientation,
+    options = {}
+) => {
+    const { patternLog } = options;
     if (newPair.length !== 2) return;
 
     const [firstConnection, secondConnection] = newPair;
@@ -87,16 +96,23 @@ export const checkOrientation = (newPair, groupMapRef, topOrientation, botOrient
             if (topGroup === bottomGroup) {
                 return -1;
             }
-    
+            const orientationUpdates = [];
             for (const combo of topGroup.combinations) {
                 if (topOrientation.current.has(combo)) {
                     const dir = topOrientation.current.get(combo);
-                    topOrientation.current.set(combo, dir === "right" ? "left" : "right");
+                    const flipped = dir === "right" ? "left" : "right";
+                    topOrientation.current.set(combo, flipped);
+                    orientationUpdates.push({ id: combo, orientation: flipped });
                 }
                 if (botOrientation.current.has(combo)) {
                     const dir = botOrientation.current.get(combo);
-                    botOrientation.current.set(combo, dir === "right" ? "left" : "right");
+                    const flipped = dir === "right" ? "left" : "right";
+                    botOrientation.current.set(combo, flipped);
+                    orientationUpdates.push({ id: combo, orientation: flipped });
                 }
+            }
+            if (patternLog && orientationUpdates.length > 0) {
+                updatePatternLogOrientations(patternLog, orientationUpdates);
             }
         }
     

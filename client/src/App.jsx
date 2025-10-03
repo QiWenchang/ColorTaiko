@@ -6,6 +6,7 @@ import { checkAndGroupConnections } from "./utils/MergeUtils";
 import { calculateProgress } from "./utils/calculateProgress";
 import { checkAndAddNewNodes } from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
+import { appendHorizontalEdges, clearPatternLog, rebuildPatternLog } from "./utils/patternLog";
 // import { checkOrientation } from "./utils/checkOrientation";
 
 import SettingIconImage from "./assets/setting-icon.png";
@@ -20,6 +21,21 @@ import { useSettings } from "./hooks/useSetting";
 
 // import {checkGirth} from "./utils/girth"
 import { runLevelChecks } from "./utils/levels";
+
+const buildPairKey = (pair) => {
+  if (!Array.isArray(pair)) return "";
+
+  const normalized = pair
+    .map((connection) => {
+      const nodes = Array.isArray(connection?.nodes)
+        ? [...connection.nodes].sort()
+        : ["__missing__"];
+      return nodes.join("|");
+    })
+    .sort();
+
+  return JSON.stringify(normalized);
+};
 
 function App() {
   // Game state management
@@ -66,6 +82,13 @@ function App() {
   // Maintain an append‑only log of connection actions.
   // Each entry is an object: { type: "connect"|"undo", conn: "..." }
   const connectionLogRef = useRef([]);
+  const processedPairKeysRef = useRef(new Set());
+  
+  // Pattern log for noFold/noPattern checks
+  const patternLogRef = useRef({
+    topSequence: [],
+    bottomSequence: []
+  });
 
   const handleLevelChange = (event) => {
     setSelectedLevel(event.target.value);
@@ -138,6 +161,25 @@ function App() {
       console.log("botOrientation:", botOrientation.current);
 
       const previousState = history[currentStep];
+
+      const processedKeys = new Set();
+      previousState.connectionPairs.forEach((pair) => {
+        if (Array.isArray(pair) && pair.length === 2) {
+          const key = buildPairKey(pair);
+          if (key) {
+            processedKeys.add(key);
+          }
+        }
+      });
+      processedPairKeysRef.current = processedKeys;
+      
+      // Rebuild pattern log from previous state
+      rebuildPatternLog(
+        patternLogRef.current,
+        previousState.connectionPairs,
+        { current: new Map(previousState.topOrientationMap) },
+        { current: new Map(previousState.botOrientationMap) }
+      );
 
       // Restore state variables.
       setConnections(previousState.connections);
@@ -316,30 +358,58 @@ function App() {
   useEffect(() => {
     const latestPair = connectionPairs[connectionPairs.length - 1];
     if (latestPair && latestPair.length === 2) {
-      // Unified level checks: run all constraints for the selected level
-      const validation = runLevelChecks(level, latestPair, {
-        groupMapRef,
-        topOrientation,
-        botOrientation,
-        connections,
-        connectionPairs,
-        topRowCount,
-        bottomRowCount,
-      });
-      if (!validation.ok) {
-        setErrorMessage(validation.message || "Level condition failed!");
-        setSelectedNodes([]);
-        handleUndo();
-        return;
+      const pairKey = buildPairKey(latestPair);
+      if (!processedPairKeysRef.current.has(pairKey)) {
+        // Unified level checks: run all constraints for the selected level
+        const validation = runLevelChecks(level, latestPair, {
+          groupMapRef,
+          topOrientation,
+          botOrientation,
+          connections,
+          connectionPairs,
+          topRowCount,
+          bottomRowCount,
+          patternLog: patternLogRef.current,
+        });
+        if (!validation.ok) {
+          setErrorMessage(validation.message || "Level condition failed!");
+          setSelectedNodes([]);
+          handleUndo();
+          return;
+        }
+        processedPairKeysRef.current.add(pairKey);
+        
+        // Add to pattern log after successful validation
+        const [firstConnection, secondConnection] = latestPair;
+        const [top1, bottom1] = firstConnection.nodes;
+        const [top2, bottom2] = secondConnection.nodes;
+        const color = secondConnection.color;
+        
+        const topNodes = [top1, top2].sort();
+        const bottomNodes = [bottom1, bottom2].sort();
+        const topKey = topNodes.join(',');
+        const bottomKey = bottomNodes.join(',');
+        
+        const topDir = topOrientation.current.get(topKey);
+        const botDir = botOrientation.current.get(bottomKey);
+        
+        appendHorizontalEdges(patternLogRef.current, pairKey, {
+          topNodes,
+          bottomNodes,
+          color,
+          topOrientation: topDir,
+          bottomOrientation: botDir
+        });
+        
+        checkAndGroupConnections(
+          latestPair,
+          groupMapRef,
+          setConnectionGroups,
+          connections,
+          setConnections,
+          connectionPairs
+        );
       }
-      checkAndGroupConnections(
-        latestPair,
-        groupMapRef,
-        setConnectionGroups,
-        connections,
-        setConnections,
-        connectionPairs
-      );
     }
     console.log("topOrientation", topOrientation);
     console.log("botOrientation", botOrientation);
@@ -454,8 +524,8 @@ function App() {
     groupMapRef.current.clear();
     topOrientation.current.clear();
     botOrientation.current.clear();
-
-    // Reset history and clear the connection log.
+    processedPairKeysRef.current = new Set();
+    clearPatternLog(patternLogRef.current);    // Reset history and clear the connection log.
     setHistory([
       {
         connections: [],
@@ -630,11 +700,12 @@ function App() {
         <div className="level-selector">
           <select
             id="level-dropdown"
+            value={selectedLevel ?? ""}
             onChange={handleLevelChange}
             disabled={isDropdownDisabled}
             className="level-dropdown"
           >
-            <option value="" disabled selected>
+            <option value="" disabled>
               Choose a level
             </option>
             <option value="Level 1">Level 1</option>

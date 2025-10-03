@@ -1,199 +1,154 @@
-/**
- * No-Fold checker
- *
- * Re-implementation of the no-fold logic currently embedded in updateHorizontalEdges,
- * but exposed as a pure check function with a unified { ok, message } result.
- *
- * Expected usage:
- *   const res = noFold(latestPair, {
- *     connectionPairs,
- *     topOrientation,   // React ref: { current: Map<string, 'left'|'right'> }
- *     botOrientation,    // React ref: { current: Map<string, 'left'|'right'> }
- *     horiEdgesRef,      // React ref: { current: Map<string, [Map, Map]> } (optional but supported)
- *     foldsFound         // Set<string> (will be cleared and re-filled)
- *   });
- *   if (!res.ok) { // show message, highlight via foldsFound elsewhere }
- */
+import { deriveHorizontalEdgesFromPair } from "./patternLog";
 
 /**
- * Normalize two node IDs to a stable, sorted key "min,max".
- * @param {string} a
- * @param {string} b
- * @returns {string}
+ * Pattern-log-driven no-fold checks. These helpers have replaced the legacy
+ * map-based approach and operate entirely on the derived horizontal edge
+ * sequences that the app maintains.
  */
-function normalizePairKey(a, b) {
-  if (a <= b) return `${a},${b}`;
-  return `${b},${a}`;
-}
 
-/**
- * Ensure a node entry exists in the horizontal edges ref map.
- * The structure matches the legacy implementation: Map<nodeId, [outMap, inMap]>.
- * Each map stores both neighbor->color and color->neighbor entries.
- * @param {Map<string, [Map, Map]>} refMap
- * @param {string} nodeId
- */
-function ensureNodeRef(refMap, nodeId) {
-  if (!refMap.has(nodeId)) {
-    refMap.set(nodeId, [new Map(), new Map()]);
+function cloneSequenceWithCandidate(sequence, candidate) {
+  const cloned = Array.isArray(sequence) ? [...sequence] : [];
+
+  if (!candidate) {
+    return cloned;
   }
-}
 
-/**
- * Log a directed horizontal edge into the ref structure with dual-keying
- * to allow fold detection via odd map sizes (as in the legacy logic).
- * @param {Map<string, [Map, Map]>} refMap
- * @param {string} from
- * @param {string} to
- * @param {string} color
- */
-function addDirectedEdge(refMap, from, to, color) {
-  ensureNodeRef(refMap, from);
-  ensureNodeRef(refMap, to);
-
-  const fromOut = refMap.get(from)[0];
-  const toIn = refMap.get(to)[1];
-
-  // neighbor -> color
-  fromOut.set(to, color);
-  toIn.set(from, color);
-
-  // color -> neighbor (last-wins overwrite used by detection)
-  fromOut.set(color, to);
-  toIn.set(color, from);
-}
-
-/**
- * Build the horizontal edges map for all completed connection pairs using the
- * current top/bottom orientations.
- * @param {Array<Array<{nodes: [string,string], color: string}>>} connectionPairs
- * @param {{ current: Map<string, 'left'|'right'> }} topOrientation
- * @param {{ current: Map<string, 'left'|'right'> }} botOrientation
- * @returns {Map<string, [Map, Map]>}
- */
-function buildHorizontalEdges(connectionPairs, topOrientation, botOrientation) {
-  const refMap = new Map();
-
-  for (const pair of connectionPairs) {
-    if (!pair || pair.length !== 2) continue;
-
-    const [firstConnection, secondConnection] = pair;
-    const [top1, bottom1] = firstConnection.nodes;
-    const [top2, bottom2] = secondConnection.nodes;
-    const color = secondConnection.color; // both connections share the same color after grouping
-
-    // Sorted combinations as keys for orientation maps
-    const tops = [top1, top2].sort();
-    const bottoms = [bottom1, bottom2].sort();
-    const topKey = tops.join(',');
-    const botKey = bottoms.join(',');
-
-    const topDir = topOrientation?.current?.get(topKey);
-    const botDir = botOrientation?.current?.get(botKey);
-
-    // Add top-row horizontal edge
-    if (topDir === 'right') {
-      addDirectedEdge(refMap, tops[0], tops[1], color);
-    } else if (topDir === 'left') {
-      addDirectedEdge(refMap, tops[1], tops[0], color);
-    }
-
-    // Add bottom-row horizontal edge
-    if (botDir === 'right') {
-      addDirectedEdge(refMap, bottoms[0], bottoms[1], color);
-    } else if (botDir === 'left') {
-      addDirectedEdge(refMap, bottoms[1], bottoms[0], color);
+  if (candidate.id) {
+    const existingIndex = cloned.findIndex(
+      (edge) => edge?.id && edge.id === candidate.id
+    );
+    if (existingIndex >= 0) {
+      cloned[existingIndex] = candidate;
+      return cloned;
     }
   }
 
-  return refMap;
+  cloned.push(candidate);
+  return cloned;
 }
 
-/**
- * Detect fold conflicts using the legacy odd-size map heuristic and produce
- * a set of pair keys ("nodeA,nodeB") to be highlighted.
- * @param {Map<string, [Map, Map]>} refMap
- * @returns {Set<string>} Set of normalized pair keys involved in folds
- */
-function detectFolds(refMap) {
-  const folds = new Set();
+function checkSequence(sequence, sequenceName) {
+  const adjacency = new Map(); // from -> Map(color -> to)
+  const foldEdges = new Set();
 
-  for (const [mapNode, [outMap, inMap]] of refMap.entries()) {
-    // Check both outgoing and incoming maps
-    for (const edgeMap of [outMap, inMap]) {
-      // In the legacy representation, a consistent mapping yields an even size:
-      // for each (neighbor->color), there is a (color->neighbor).
-      // If the same color is associated to multiple neighbors, one of the
-      // color->neighbor entries gets overwritten, making the size odd.
-      if (edgeMap.size % 2 !== 0) {
-        for (const [otherNode, value] of edgeMap.entries()) {
-          // Only consider entries where the value is a color string (e.g. "#RRGGBB")
-          if (typeof value === 'string' && value.startsWith('#')) {
-            const trueNode = edgeMap.get(value);
-            if (trueNode && trueNode !== otherNode) {
-              // Flag both conflicting edges at mapNode
-              folds.add(normalizePairKey(mapNode, otherNode));
-              folds.add(normalizePairKey(mapNode, trueNode));
-            }
-          }
-        }
+  for (const edge of sequence) {
+    if (!edge || !edge.orientation || !edge.nodes || edge.nodes.length !== 2) {
+      continue;
+    }
+
+    const [nodeA, nodeB] = edge.nodes;
+    const from = edge.orientation === "right" ? nodeA : nodeB;
+    const to = edge.orientation === "right" ? nodeB : nodeA;
+
+    if (!adjacency.has(from)) {
+      adjacency.set(from, new Map());
+    }
+
+    const outEdges = adjacency.get(from);
+
+    if (outEdges.has(edge.color)) {
+      const existingTo = outEdges.get(edge.color);
+      if (existingTo !== to) {
+        foldEdges.add(edge.id ?? `${from},${to}`);
+        foldEdges.add(`${from},${existingTo}`);
+        console.log(
+          `Fold detected in ${sequenceName}: ${from} has ${edge.color} going to both ${existingTo} and ${to}`
+        );
+      }
+    } else {
+      outEdges.set(edge.color, to);
+    }
+
+    if (adjacency.has(to)) {
+      const toOutEdges = adjacency.get(to);
+      if (toOutEdges.has(edge.color) && toOutEdges.get(edge.color) === from) {
+        foldEdges.add(edge.id ?? `${from},${to}`);
+        foldEdges.add(`${to},${from}`);
+        console.log(
+          `Cycle detected in ${sequenceName}: ${from} <-> ${to} with color ${edge.color}`
+        );
       }
     }
   }
 
-  return folds;
+  return foldEdges;
 }
 
 /**
- * Expected signature: (latestPair, context) => ({ ok: boolean, message?: string })
- * This implementation computes the no-fold condition across all completed pairs
- * in context.connectionPairs using context.topOrientation/botOrientation.
- * It updates context.foldsFound (if provided) and context.horiEdgesRef.current (if provided).
- * No UI side effects (no drawing, no setErrorMessage) are performed here.
- *
- * @param {Array<{nodes: [string,string], color: string}>} latestPair - The most recent completed pair (unused for the computation, but kept for API symmetry)
- * @param {Object} context
- * @param {Array<Array<{nodes: [string,string], color: string}>>} context.connectionPairs
- * @param {{ current: Map<string, 'left'|'right'> }} context.topOrientation
- * @param {{ current: Map<string, 'left'|'right'> }} context.botOrientation
- * @param {{ current: Map<string, [Map, Map]> }} [context.horiEdgesRef]
- * @param {Set<string>} [context.foldsFound]
+ * Pattern-log based noFold check
+ * @param {Object} patternLog - Pattern log with topSequence and bottomSequence
+ * @param {Set<string>} [foldsFound] - Optional set to populate with fold edge IDs
+ * @param {Object} [options]
+ * @param {Object|null} [options.candidateTopEdge]
+ * @param {Object|null} [options.candidateBottomEdge]
  * @returns {{ ok: boolean, message?: string }}
  */
-export function noFold(latestPair, context) {
-  void latestPair; // currently unused; retained for future optimizations if needed
-
-  const {
-    connectionPairs,
-    topOrientation,
-    botOrientation,
-    horiEdgesRef,
-    foldsFound,
-  } = context || {};
-
-  // Defensive checks
-  if (!connectionPairs || !topOrientation || !botOrientation) {
-    return { ok: true }; // nothing to validate
+export function noFoldFromPatternLog(patternLog, foldsFound, options = {}) {
+  if (!patternLog || (!patternLog.topSequence && !patternLog.bottomSequence)) {
+    return { ok: true };
   }
 
-  // Build the horizontal edges ref map
-  const refMap = buildHorizontalEdges(connectionPairs, topOrientation, botOrientation);
-
-  // Persist into provided refs/sets if present
-  if (horiEdgesRef && typeof horiEdgesRef === 'object') {
-    horiEdgesRef.current = refMap;
-  }
-
-  const detected = detectFolds(refMap);
-
-  if (foldsFound && foldsFound instanceof Set) {
+  if (foldsFound) {
     foldsFound.clear();
-    for (const key of detected) foldsFound.add(key);
   }
 
-  if (detected.size > 0) {
-    return { ok: false, message: 'No-Fold condition failed!' };
+  const { candidateTopEdge = null, candidateBottomEdge = null } = options;
+
+  const topSequence = cloneSequenceWithCandidate(
+    patternLog.topSequence,
+    candidateTopEdge
+  );
+  const bottomSequence = cloneSequenceWithCandidate(
+    patternLog.bottomSequence,
+    candidateBottomEdge
+  );
+
+  const topFolds = checkSequence(topSequence, "top");
+  const bottomFolds = checkSequence(bottomSequence, "bottom");
+
+  const allFolds = new Set([...topFolds, ...bottomFolds]);
+
+  if (foldsFound) {
+    for (const fold of allFolds) {
+      foldsFound.add(fold);
+    }
+  }
+
+  if (allFolds.size > 0) {
+    return { ok: false, message: "No-Fold condition failed!" };
   }
 
   return { ok: true };
+}
+
+/**
+ * Unified noFold entry point that delegates entirely to the pattern-log
+ * implementation. It accepts the current pattern log plus the latest pair and
+ * returns a `{ ok, message }` result. Optional `foldsFound` metadata will be
+ * populated from the pattern-log check when provided.
+ *
+ * @param {Array<{nodes: [string,string], color: string}>} latestPair - The most recent completed pair
+ * @param {Object} context
+ * @param {{ current: Map<string, 'left'|'right'> }} context.topOrientation
+ * @param {{ current: Map<string, 'left'|'right'> }} context.botOrientation
+ * @param {Set<string>} [context.foldsFound]
+ * @param {Object} [context.patternLog]
+ * @returns {{ ok: boolean, message?: string }}
+ */
+export function noFold(latestPair, context) {
+  void latestPair;
+
+  const { topOrientation, botOrientation, foldsFound, patternLog } = context || {};
+
+  if (!patternLog) {
+    return { ok: true };
+  }
+
+  const { topEdge = null, bottomEdge = null } =
+    deriveHorizontalEdgesFromPair(latestPair, topOrientation, botOrientation) || {};
+
+  return noFoldFromPatternLog(patternLog, foldsFound, {
+    candidateTopEdge: topEdge,
+    candidateBottomEdge: bottomEdge,
+  });
 }
