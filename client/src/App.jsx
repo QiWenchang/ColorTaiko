@@ -20,7 +20,8 @@ import { useAudio } from "./hooks/useAudio";
 import { useSettings } from "./hooks/useSetting";
 
 // import {checkGirth} from "./utils/girth"
-import { runLevelChecks } from "./utils/levels";
+import LevelTreeModal from "./components/LevelTreeModal/LevelTreeModal";
+import { levelGraph, levelDescriptions, runLevelChecks } from "./utils/levels";
 
 const buildPairKey = (pair) => {
   if (!Array.isArray(pair)) return "";
@@ -36,6 +37,21 @@ const buildPairKey = (pair) => {
 
   return JSON.stringify(normalized);
 };
+
+const LAST_LEVEL_KEY = "color-taiko:last-level";
+
+const levelAliasMap = {
+  "Level 1": "Level 1",
+  "Level 2": "Level 2",
+  "Level 3.NF": "Level 3.NF",
+  "Level 3.G4": "Level 3.G4",
+  "Level 4.NF+NP": "Level 4NP",
+  "Level 4.G4": "Level 4.G4",
+  "Level 5.NP+G4": "Level 5.NP+G4",
+  "Level 5.NP+G6": "Level 5.NP+G6",
+};
+
+const validRuntimeLevels = Object.values(levelAliasMap).filter(Boolean);
 
 function App() {
   // Game state management
@@ -59,10 +75,10 @@ function App() {
 
   const [isDraggingLine, setIsDraggingLine] = useState(false);
   const [currentLineEl, setCurrentLineEl] = useState(null);
-  const [level, setLevel] = useState("level");
+  const [level, setLevel] = useState(null);
 
   const [selectedLevel, setSelectedLevel] = useState(null);
-  const [isDropdownDisabled, setIsDropdownDisabled] = useState(false);
+  const [isLevelModalOpen, setIsLevelModalOpen] = useState(false);
 
   const [history, setHistory] = useState([
     {
@@ -90,10 +106,28 @@ function App() {
     bottomSequence: []
   });
 
-  const handleLevelChange = (event) => {
-    setSelectedLevel(event.target.value);
-    setLevel(event.target.value);
-    setIsDropdownDisabled(true); // Disable dropdown after selection.
+  const handleLevelSelect = (levelLabel) => {
+    if (!levelLabel) return;
+
+    const mappedLevel = levelAliasMap[levelLabel];
+
+    if (!mappedLevel) {
+      setErrorMessage(`Level "${levelLabel}" is not available yet.`);
+      return;
+    }
+
+    if (mappedLevel !== level) {
+      handleClear();
+    }
+
+    setSelectedLevel(levelLabel);
+    setLevel(mappedLevel);
+    try {
+      localStorage.setItem(LAST_LEVEL_KEY, mappedLevel);
+    } catch (storageError) {
+      console.warn("Unable to persist last level selection", storageError);
+    }
+    setIsLevelModalOpen(false);
   };
 
   // Custom hooks for managing audio and settings.
@@ -248,6 +282,26 @@ function App() {
       setWelcomeMessage(true);
     }
   }, [topRowCount, bottomRowCount]);
+
+  useEffect(() => {
+    try {
+      const storedLevel = localStorage.getItem(LAST_LEVEL_KEY);
+      if (storedLevel && validRuntimeLevels.includes(storedLevel)) {
+        const displayLevel = Object.entries(levelAliasMap).find(
+          ([, runtime]) => runtime === storedLevel
+        )?.[0];
+        setSelectedLevel(displayLevel ?? "Level 1");
+        setLevel(storedLevel);
+      } else {
+        setSelectedLevel("Level 1");
+        setLevel("Level 1");
+      }
+    } catch (storageError) {
+      console.warn("Unable to read last level selection", storageError);
+      setSelectedLevel("Level 1");
+      setLevel("Level 1");
+    }
+  }, []);
 
   /**
    * Draws connections on the SVG element when related state changes.
@@ -456,8 +510,8 @@ function App() {
 
     if (soundBool) clickAudio.play();
 
-    if (!selectedLevel) {
-      setErrorMessage("Please select a level and try again!!!!");
+    if (!level) {
+      setErrorMessage("Please choose an available level before connecting nodes.");
       return;
     }
 
@@ -678,6 +732,30 @@ function App() {
         className="icon"
         onClick={() => setShowSettings((prev) => !prev)}
       />
+      <div className="level-icon-wrapper">
+        <button
+          type="button"
+          className="level-icon"
+          onClick={() => setIsLevelModalOpen(true)}
+          aria-label="Choose level"
+        >
+          <svg
+            className="level-icon__glyph"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            role="img"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M10 3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3h3a1 1 0 0 1 1 1v2.586l1.707 1.707a1 1 0 0 1 0 1.414L18 14.414V20a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-3H8a1 1 0 0 1-1-1v-2.586l-1.707-1.707a1 1 0 0 1 0-1.414L7 9.586V7a1 1 0 0 1 1-1h3V3Zm2 1v3a1 1 0 0 1-1 1H9v1.586l-1.293 1.293L9 11.586V14h4a1 1 0 0 1 1 1v3h2v-4.414l1.293-1.293L16 10.414V8h-3a1 1 0 0 1-1-1V4h-1Z"
+            />
+          </svg>
+        </button>
+        {selectedLevel && (
+          <span className="level-icon__caption">{selectedLevel}</span>
+        )}
+      </div>
       {showSettings && (
         <SettingsMenu
           offset={offset}
@@ -696,37 +774,18 @@ function App() {
       <button onClick={handleUndo} className="undo-button">
         Undo
       </button>
-      {!selectedLevel ? (
-        <div className="level-selector">
-          <select
-            id="level-dropdown"
-            value={selectedLevel ?? ""}
-            onChange={handleLevelChange}
-            disabled={isDropdownDisabled}
-            className="level-dropdown"
-          >
-            <option value="" disabled>
-              Choose a level
-            </option>
-            <option value="Level 1">Level 1</option>
-            <option value="Level 2">Level 2</option>
-            <option value="Level 3">Level 3</option>
-            <option value="Level 4NP">Level 4NP</option>
-            <option value="Level 4.6">Level 4.6</option>
-          </select>
-        </div>
-      ) : (
-        <div
-          className="level-selected"
-          style={{ color: lightMode ? "black" : "white" }}
-        >
-          Selected Level: {selectedLevel}
-        </div>
-      )}
       <ErrorModal
         className="error-container"
         message={errorMessage}
         onClose={() => setErrorMessage("")}
+      />
+      <LevelTreeModal
+        isOpen={isLevelModalOpen}
+        onClose={() => setIsLevelModalOpen(false)}
+        graph={levelGraph}
+        selectedLevel={selectedLevel}
+        onSelect={handleLevelSelect}
+        descriptions={levelDescriptions}
       />
       {showNodes && (
         <div className="game-box">
