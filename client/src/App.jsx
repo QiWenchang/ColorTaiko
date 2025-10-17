@@ -8,6 +8,8 @@ import { checkAndAddNewNodes } from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
 import { appendHorizontalEdges, clearPatternLog, rebuildPatternLog } from "./utils/patternLog";
 import { noFoldPreflightWithPatternLog } from "./utils/noFold";
+import { noPatternPreflightWithPatternLog } from "./utils/noPattern";
+import { levelsWithNoPattern } from "./utils/levels";
 // import { checkOrientation } from "./utils/checkOrientation";
 
 import SettingIconImage from "./assets/setting-icon.png";
@@ -46,7 +48,7 @@ const levelAliasMap = {
   "Level 2": "Level 2",
   "Level 3.NF": "Level 3.NF",
   "Level 3.G4": "Level 3.G4",
-  "Level 4.NF+NP": "Level 4NP",
+  "Level 4.NF+NP": "Level 4.NF+NP",
   "Level 4.G4": "Level 4.G4",
   "Level 5.NP+G4": "Level 5.NP+G4",
   "Level 5.NP+G6": "Level 5.NP+G6",
@@ -464,12 +466,26 @@ function App() {
           setConnections,
           connectionPairs
         );
+
+        // Redraw after orientation updates so arrows appear immediately
+        try {
+          drawConnections(
+            svgRef,
+            connections,
+            connectionPairs,
+            offset,
+            topOrientation,
+            botOrientation
+          );
+        } catch (e) {
+          console.warn('Redraw after orientation update failed', e);
+        }
       }
     }
     console.log("topOrientation", topOrientation);
     console.log("botOrientation", botOrientation);
     console.log("groupMapRef", groupMapRef);
-  }, [connectionPairs, level, connections, topRowCount, bottomRowCount, handleUndo]);
+  }, [connectionPairs, level, connections, topRowCount, bottomRowCount, handleUndo, offset]);
 
   const createTopRow = (count) =>
     Array.from({ length: count }, (_, i) => (
@@ -682,6 +698,24 @@ function App() {
         // (we saved history when the first edge was added)
         handleUndo();
         return;
+      }
+
+      // Run noPattern preflight only if current level requires it
+      if (levelsWithNoPattern.has(level)) {
+        const npPreflight = noPatternPreflightWithPatternLog(candidatePair, {
+          topOrientation,
+          botOrientation,
+          groupMapRef,
+          patternLog: patternLogRef.current,
+        });
+        if (!npPreflight.ok) {
+          if (soundBool) errorAudio.play();
+          setErrorMessage(npPreflight.message || "No-Pattern condition failed!");
+          setSelectedNodes([]);
+          setHighlightedNodes([]);
+          handleUndo();
+          return;
+        }
       }
 
       // Save current state before updating (only after preflight success).

@@ -42,6 +42,14 @@ export const levelDescriptions = {
   "Level 5.NP+G6": ["color merging", "orientation", "no-pattern", "girth-6"],
 };
 
+// Levels that include the No-Pattern constraint
+export const levelsWithNoPattern = new Set([
+  "Level 4.NF+NP",
+  "Level 4.G4",
+  "Level 5.NP+G4",
+  "Level 5.NP+G6",
+]);
+
 // Adapters to normalize existing check functions to a unified { ok, message } interface
 const orientationCheck = (latestPair, ctx) => {
   const res = checkOrientation(
