@@ -7,6 +7,7 @@ import { calculateProgress } from "./utils/calculateProgress";
 import { checkAndAddNewNodes } from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
 import { appendHorizontalEdges, clearPatternLog, rebuildPatternLog } from "./utils/patternLog";
+import { noFoldPreflightWithPatternLog } from "./utils/noFold";
 // import { checkOrientation } from "./utils/checkOrientation";
 
 import SettingIconImage from "./assets/setting-icon.png";
@@ -659,24 +660,44 @@ function App() {
       return;
     }
 
-    // Save current state before updating.
-    saveToHistory();
-
     let newColor;
     if (edgeState) {
+      // Preflight noFold using patternLog before committing the second edge
       newColor = edgeState.color;
-      const newConnection = { nodes: [node1, node2], color: newColor };
-      setConnections([...connections, newConnection]);
+      const candidateConnection = { nodes: [node1, node2], color: newColor };
+      const candidatePair = [edgeState, candidateConnection];
+
+      const preflight = noFoldPreflightWithPatternLog(candidatePair, {
+        topOrientation,
+        botOrientation,
+        groupMapRef,
+        patternLog: patternLogRef.current,
+      });
+      if (!preflight.ok) {
+        if (soundBool) errorAudio.play();
+        setErrorMessage(preflight.message || "No-Fold condition failed!");
+        setSelectedNodes([]);
+        setHighlightedNodes([]);
+        // Automatically undo the pending first edge so user can start a fresh pair
+        // (we saved history when the first edge was added)
+        handleUndo();
+        return;
+      }
+
+      // Save current state before updating (only after preflight success).
+      saveToHistory();
+
+      setConnections([...connections, candidateConnection]);
       setConnectionPairs((prevPairs) => {
         const lastPair = prevPairs[prevPairs.length - 1];
         let updatedPairs;
         if (lastPair && lastPair.length === 1) {
           updatedPairs = [
             ...prevPairs.slice(0, -1),
-            [...lastPair, newConnection],
+            [...lastPair, candidateConnection],
           ];
         } else {
-          updatedPairs = [...prevPairs, [edgeState, newConnection]];
+          updatedPairs = [...prevPairs, [edgeState, candidateConnection]];
         }
         return updatedPairs;
       });
@@ -690,6 +711,8 @@ function App() {
     } else {
       newColor = generateColor(currentColor, setCurrentColor, connectionPairs);
       const newConnection = { nodes: [node1, node2], color: newColor };
+      // Save current state before updating the first edge of a pair
+      saveToHistory();
       setConnections([...connections, newConnection]);
       setConnectionPairs([...connectionPairs, [newConnection]]);
       setEdgeState(newConnection);

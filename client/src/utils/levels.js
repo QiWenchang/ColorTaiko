@@ -3,8 +3,9 @@
 
 import { checkOrientation } from "./checkOrientation.js";
 import { checkGirth } from "./girth.js";
-import { noFold } from "./noFold.js"; // stubbed; replace with your real implementation later
+import { noFold } from "./noFold.js"; // runtime noFold
 import { noPattern } from "./noPattern.js"; // stubbed; replace with your real implementation later
+import { checkAndGroupConnections } from "./MergeUtils.js";
 
 export const levelGraph = {
   nodes: [
@@ -62,7 +63,25 @@ const girthCheck = (minGirth) => (latestPair, ctx) => {
 };
 
 const noFoldCheck = (latestPair, ctx) => {
-  const res = noFold(latestPair, ctx);
+  // Align with preflight: clone group map and simulate colour merge for latestPair
+  const groupMapCloneRef = { current: new Map(ctx.groupMapRef?.current || []) };
+  try {
+    const noop = () => {};
+    const connectionsClone = [];
+    const connectionPairsClone = [];
+    checkAndGroupConnections(
+      latestPair,
+      groupMapCloneRef,
+      noop,
+      connectionsClone,
+      noop,
+      connectionPairsClone
+    );
+  } catch {
+    // ignore: merge simulation failure shouldn't block checks
+  }
+
+  const res = noFold(latestPair, { ...ctx, groupMapRef: groupMapCloneRef });
   if (res && res.ok === false)
     return { ok: false, message: res.message || "No-Fold condition failed!" };
   return { ok: true };

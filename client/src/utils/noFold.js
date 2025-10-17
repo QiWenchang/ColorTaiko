@@ -6,6 +6,10 @@
  * “fold” in the puzzle.
  */
 
+import { checkOrientation } from "./checkOrientation.js";
+import { deriveHorizontalEdgesFromPair } from "./patternLog.js";
+import { checkAndGroupConnections } from "./MergeUtils.js";
+
 const FALLBACK_COLOR_PREFIX = "__uncoloured__:";
 
 function ensureArray(value) {
@@ -29,164 +33,23 @@ function resolveColor(groupMapRef, combinationKey, fallbackColor) {
   return fallbackColor;
 }
 
-function getConnectionColor(pair) {
-  for (const connection of ensureArray(pair)) {
-    if (connection?.color) {
-      return connection.color;
-    }
-  }
-  return null;
-}
+// removed legacy helper getConnectionColor
 
-function parseIndex(nodeId) {
-  if (typeof nodeId !== "string") return Number.NaN;
-  const [, index] = nodeId.split("-");
-  return Number.parseInt(index, 10);
-}
-
+// Minimal helper used by noFoldFromPatternLog normalisation
 function normalizeCombination(nodeA, nodeB) {
   const nodes = [nodeA, nodeB].sort();
-  return {
-    nodes,
-    key: nodes.join(","),
-  };
+  return { nodes, key: nodes.join(',') };
 }
 
-function deriveOrientation(nodeA, nodeB, orientationRef, key) {
-  const stored = orientationRef?.current?.get(key);
-  if (stored === "left" || stored === "right") {
-    return stored;
-  }
+// removed legacy helper normalizeCombination
 
-  const idxA = parseIndex(nodeA);
-  const idxB = parseIndex(nodeB);
-  if (Number.isNaN(idxA) || Number.isNaN(idxB)) {
-    return "right";
-  }
+// removed legacy helper deriveOrientation
 
-  return idxA <= idxB ? "right" : "left";
-}
+// removed legacy helper classifyConnection
 
-function classifyConnection(connection) {
-  const topNodes = [];
-  const bottomNodes = [];
+// removed legacy helper buildHorizontalEdge
 
-  for (const node of ensureArray(connection?.nodes)) {
-    if (typeof node !== "string") continue;
-    if (node.startsWith("top-")) {
-      topNodes.push(node);
-    } else if (node.startsWith("bottom-")) {
-      bottomNodes.push(node);
-    }
-  }
-
-  return {
-    top: topNodes[0] ?? null,
-    bottom: bottomNodes[0] ?? null,
-  };
-}
-
-function buildHorizontalEdge(nodeA, nodeB, orientationRef, groupMapRef, combinationKey, fallbackColor) {
-  if (!nodeA || !nodeB) {
-    return null;
-  }
-
-  const { nodes, key } = normalizeCombination(nodeA, nodeB);
-  const orientation = deriveOrientation(nodeA, nodeB, orientationRef, key);
-
-  let color = resolveColor(groupMapRef, combinationKey ?? key, fallbackColor);
-  color = ensureColor(color, key);
-
-  const [first, second] = nodes;
-  const from = orientation === "right" ? first : second;
-  const to = orientation === "right" ? second : first;
-
-  return {
-    id: key,
-    nodes,
-    color,
-    orientation,
-    from,
-    to,
-  };
-}
-
-function gatherHorizontalEdges(connectionPairs, latestPair, topOrientation, botOrientation, groupMapRef) {
-  const pairs = ensureArray(connectionPairs).slice();
-  if (
-    Array.isArray(latestPair) &&
-    latestPair.length === 2 &&
-    pairs[pairs.length - 1] !== latestPair
-  ) {
-    pairs.push(latestPair);
-  }
-
-  const topEdges = [];
-  const bottomEdges = [];
-
-  for (const pair of pairs) {
-    if (!Array.isArray(pair) || pair.length !== 2) {
-      continue;
-    }
-
-    const [firstConnection, secondConnection] = pair;
-    const { top: top1, bottom: bottom1 } = classifyConnection(firstConnection);
-    const { top: top2, bottom: bottom2 } = classifyConnection(secondConnection);
-
-    if (!top1 || !top2 || !bottom1 || !bottom2) {
-      continue;
-    }
-
-    const topCombo = normalizeCombination(top1, top2);
-    const botCombo = normalizeCombination(bottom1, bottom2);
-    const pairColor = getConnectionColor(pair);
-
-    const topGroup = groupMapRef?.current?.get(topCombo.key) ?? null;
-    const bottomGroup = groupMapRef?.current?.get(botCombo.key) ?? null;
-    const mergedColor =
-      bottomGroup?.color ??
-      topGroup?.color ??
-      pairColor;
-
-    const topEdge = buildHorizontalEdge(
-      top1,
-      top2,
-      topOrientation,
-      groupMapRef,
-      topCombo.key,
-      mergedColor
-    );
-    if (topEdge) {
-      topEdges.push(topEdge);
-    }
-
-    const bottomEdge = buildHorizontalEdge(
-      bottom1,
-      bottom2,
-      botOrientation,
-      groupMapRef,
-      botCombo.key,
-      mergedColor
-    );
-    if (bottomEdge) {
-      bottomEdges.push(bottomEdge);
-    }
-  }
-
-  const debugEnabled =
-    (typeof process !== "undefined" && process?.env?.NOFOLD_DEBUG) ||
-    (typeof globalThis !== "undefined" && globalThis.__NOFOLD_DEBUG);
-
-  if (debugEnabled) {
-    console.log("[noFold] gathered edges", {
-      latestPair,
-      topEdges,
-      bottomEdges,
-    });
-  }
-
-  return { topEdges, bottomEdges };
-}
+// gatherHorizontalEdges was used by the legacy path; removed to keep single path via patternLog
 
 function recordFold(foldSet, edgeId) {
   if (!edgeId) return;
@@ -256,46 +119,89 @@ function checkSequence(edges, sequenceName) {
 }
 
 export function noFold(latestPair, context = {}) {
-  const {
-    connectionPairs,
-    topOrientation,
-    botOrientation,
-    groupMapRef,
-    foldsFound,
-  } = context;
+  // Delegate to the preflight check so we have a single, consistent logic path
+  // that accounts for orientation flips and colour merges caused by the pair.
+  return noFoldPreflightWithPatternLog(latestPair, context);
+}
 
-  if (
-    !Array.isArray(connectionPairs) &&
-    !(Array.isArray(latestPair) && latestPair.length === 2)
-  ) {
-    foldsFound?.clear?.();
+/**
+ * Preflight no-fold check using patternLog before committing a new pair.
+ * This performs a dry-run orientation resolution on cloned maps, derives the
+ * candidate horizontal edges for the new pair, appends them onto a cloned
+ * patternLog, and then runs noFoldFromPatternLog. It does not mutate real state.
+ *
+ * @param {Array} newPair - Exactly two vertical connections to form a pair
+ * @param {Object} context
+ *  - connectionPairs: existing history (not strictly required here)
+ *  - topOrientation, botOrientation: refs with current orientation maps
+ *  - groupMapRef: ref to colour groups
+ *  - patternLog: current pattern log object { topSequence, bottomSequence }
+ * @returns {{ ok: boolean, message?: string }}
+ */
+export function noFoldPreflightWithPatternLog(newPair, context = {}) {
+  const { topOrientation, botOrientation, groupMapRef, patternLog } = context;
+
+  if (!Array.isArray(newPair) || newPair.length !== 2) {
     return { ok: true };
   }
 
-  const { topEdges, bottomEdges } = gatherHorizontalEdges(
-    connectionPairs,
-    latestPair,
-    topOrientation,
-    botOrientation,
-    groupMapRef
+  // Clone orientation maps so mutations during orientation resolution don't leak.
+  const topClone = { current: new Map(topOrientation?.current || []) };
+  const botClone = { current: new Map(botOrientation?.current || []) };
+
+  // Shallow-clone pattern log arrays (edges are immutable records for our purpose).
+  const logClone = {
+    topSequence: Array.isArray(patternLog?.topSequence)
+      ? patternLog.topSequence.map((e) => ({ ...e }))
+      : [],
+    bottomSequence: Array.isArray(patternLog?.bottomSequence)
+      ? patternLog.bottomSequence.map((e) => ({ ...e }))
+      : [],
+  };
+
+  // Dry-run orientation resolution on clones. If orientation fails, block.
+  const orientRes = checkOrientation(
+    newPair,
+    groupMapRef,
+    topClone,
+    botClone,
+    { patternLog: logClone }
   );
-
-  const topFolds = checkSequence(topEdges, "top");
-  const bottomFolds = checkSequence(bottomEdges, "bottom");
-  const allFolds = new Set([...topFolds, ...bottomFolds]);
-
-  if (foldsFound) {
-    foldsFound.clear();
-    for (const fold of allFolds) {
-      foldsFound.add(fold);
-    }
+  if (orientRes === -1) {
+    return { ok: false, message: "Orientation condition failed!" };
   }
 
-  if (allFolds.size > 0) {
-    return { ok: false, message: "No-Fold condition failed!" };
+  // Simulate color group merge on a cloned groupMap, as this pair may merge groups
+  // and change effective colours seen by noFold.
+  const groupMapCloneRef = { current: new Map(groupMapRef?.current || []) };
+  try {
+    const noop = () => {};
+    const connectionsClone = [];
+    const connectionPairsClone = [];
+    checkAndGroupConnections(
+      newPair,
+      groupMapCloneRef,
+      noop,
+      connectionsClone,
+      noop,
+      connectionPairsClone
+    );
+  } catch {
+    // ignore: group merge simulation failure in preflight should not block
   }
 
-  return { ok: true };
+  // Derive candidate horizontal edges for this pair using the resolved orientations.
+  const { topEdge, bottomEdge } = deriveHorizontalEdgesFromPair(
+    newPair,
+    topClone,
+    botClone
+  );
+  if (topEdge) logClone.topSequence.push(topEdge);
+  if (bottomEdge) logClone.bottomSequence.push(bottomEdge);
+
+  // Run no-fold check on the updated log clone.
+  const res = noFoldFromPatternLog(logClone, null, { groupMapRef: groupMapCloneRef });
+  return res && typeof res.ok === "boolean" ? res : { ok: true };
 }
 
 export function noFoldFromPatternLog(patternLog, foldsFound, options = {}) {
