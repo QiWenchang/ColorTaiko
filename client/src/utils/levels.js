@@ -1,10 +1,10 @@
 // Centralized level validation mapping and runner.
 // Each check has signature: (latestPair, context) => ({ ok: boolean, message?: string })
 
-import { checkOrientation } from "./checkOrientation";
-import { checkGirth } from "./girth";
-import { noFold } from "./noFold"; // stubbed; replace with your real implementation later
-import { noPattern } from "./noPattern"; // stubbed; replace with your real implementation later
+import { checkOrientation } from "./checkOrientation.js";
+import { checkGirth } from "./girth.js";
+import { noFold } from "./noFold.js"; // stubbed; replace with your real implementation later
+import { noPattern } from "./noPattern.js"; // stubbed; replace with your real implementation later
 
 export const levelGraph = {
   nodes: [

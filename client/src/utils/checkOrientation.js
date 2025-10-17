@@ -1,4 +1,4 @@
-import { updatePatternLogOrientations } from "./patternLog";
+import { updatePatternLogOrientations } from "./patternLog.js";
 
 export const checkOrientation = (
     newPair,
