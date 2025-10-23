@@ -1,35 +1,28 @@
+import { checkOrientation } from "./checkOrientation.js";
+import { deriveHorizontalEdgesFromPair } from "./patternLog.js";
+import { checkAndGroupConnections } from "./MergeUtils.js";
+
 /**
  * No-Pattern check: verifies that no two horizontal trios (pt1-pt2-pt3) share the same
  * signature key: `${o1}|${c1}|${o2}|${c2}` where oX in {'in','out'} and cX is the edge color.
- *
- * Contract
- * - Input:
- *   - latestPair: [{ nodes: [topX,bottomY], color }, { nodes: [topZ,bottomW], color }]
- *                 The most recently completed vertical pair. Not strictly required for the
- *                 computation but provided to align with the unified check interface.
- *   - context: {
- *       connectionPairs: Array<[conn, conn] | [conn]>,
- *       topOrientation:  { current: Map<string, 'in'|'out'> },
- *       botOrientation:  { current: Map<string, 'in'|'out'> }
- *     }
- * - Output: { ok: boolean, message?: string }
- *
- * Notes
- * - This is a pure, side-effect free check. It does not mutate refs or touch the DOM.
- * - It re-derives the horizontal edge map from connectionPairs and the current orientations.
  */
 
 /**
  * Build the horizontal edges adjacency map from connectionPairs and orientations.
  * Returns: Map<nodeId, [outMap: Map<nodeId,color>, inMap: Map<nodeId,color>]>
  */
-function buildHorizontalEdges(connectionPairs, topOrientation, botOrientation) {
-  const horiEdges = new Map();
+function buildAdjacencyFromPatternLog(patternLog, groupMapRef) {
+  const horiEdges = new Map(); // node -> [outMap, inMap]
 
-  const record = (from, to, ori, color) => {
+  const getGroupColor = (edge) => {
+    const groupColor = groupMapRef?.current?.get(edge.id)?.color;
+    return groupColor ?? edge.color ?? null;
+  };
+
+  const record = (from, to, isOut, color) => {
     if (!horiEdges.has(from)) horiEdges.set(from, [new Map(), new Map()]);
     const [outM, inM] = horiEdges.get(from);
-    if (ori === 'out') {
+    if (isOut) {
       inM.delete(to);
       outM.set(to, color);
     } else {
@@ -38,22 +31,22 @@ function buildHorizontalEdges(connectionPairs, topOrientation, botOrientation) {
     }
   };
 
-  (connectionPairs || []).forEach(pair => {
-    if (!pair || pair.length !== 2) return;
-    const [{ nodes: [t1, b1] }, { nodes: [t2, b2], color }] = pair;
+  const pushEdge = (edge) => {
+    if (!edge || !Array.isArray(edge.nodes) || edge.nodes.length !== 2) return;
+    const [left, right] = edge.nodes; // nodes are sorted left<right
+    const color = getGroupColor(edge);
+    const ori = edge.orientation === 'left' ? 'left' : 'right';
+    if (ori === 'right') {
+      record(left, right, true, color);  // left -> right (out)
+      record(right, left, false, color); // from right perspective it's 'in'
+    } else {
+      record(right, left, true, color);  // right -> left (out)
+      record(left, right, false, color);
+    }
+  };
 
-    // Top row horizontal edge t1<->t2 with orientation from orientation maps
-    const topKey = [t1, t2].sort().join(',');
-    const topOri = (topOrientation?.current?.get(topKey)) || 'out';
-    record(t1, t2, topOri, color);
-    record(t2, t1, topOri === 'out' ? 'in' : 'out', color);
-
-    // Bottom row horizontal edge b1<->b2
-    const botKey = [b1, b2].sort().join(',');
-    const botOri = (botOrientation?.current?.get(botKey)) || 'out';
-    record(b1, b2, botOri, color);
-    record(b2, b1, botOri === 'out' ? 'in' : 'out', color);
-  });
+  (patternLog?.topSequence || []).forEach(pushEdge);
+  (patternLog?.bottomSequence || []).forEach(pushEdge);
 
   return horiEdges;
 }
@@ -69,7 +62,7 @@ function getEdgeColor(horiEdges, a, b) {
  * Build trio map and throw on conflict (duplicate key).
  * Mirrors the active logic in drawingUtils.buildTrioMap to ensure consistent behavior.
  */
-function assertNoPattern(horiEdges, topOrientation, botOrientation) {
+function assertNoPatternFromAdj(horiEdges) {
   const trioMap = new Map();
 
   const idsToIndex = id => +id.split('-')[1];
@@ -99,18 +92,10 @@ function assertNoPattern(horiEdges, topOrientation, botOrientation) {
           else         { pt1 = n2; pt3 = n1; }
         }
 
-        // Determine orientations for edges (pt1-center) and (center-pt3)
-        const combo12 = [pt1, center].sort().join(',');
-        const raw1 = (row === 'top'
-                      ? topOrientation?.current?.get(combo12)
-                      : botOrientation?.current?.get(combo12)) || 'out';
-        const o1 = combo12 === `${pt1},${center}` ? raw1 : (raw1 === 'out' ? 'in' : 'out');
-
-        const combo23 = [center, pt3].sort().join(',');
-        const raw2 = (row === 'top'
-                      ? topOrientation?.current?.get(combo23)
-                      : botOrientation?.current?.get(combo23)) || 'out';
-        const o2 = combo23 === `${center},${pt3}` ? raw2 : (raw2 === 'out' ? 'in' : 'out');
+  // Determine orientations relative to center using adjacency
+  // If edge is center->neighbor it's 'out'; if neighbor->center it's 'in'
+  const o1 = (outMap.has(pt1) ? 'out' : 'in');
+  const o2 = (outMap.has(pt3) ? 'out' : 'in');
 
         const c1 = getEdgeColor(horiEdges, pt1, center);
         const c2 = getEdgeColor(horiEdges, center, pt3);
@@ -128,20 +113,56 @@ function assertNoPattern(horiEdges, topOrientation, botOrientation) {
   });
 }
 
-export function noPattern(latestPair, context) {
-  void latestPair; // latestPair not strictly required; check uses full state
-
-  const { connectionPairs, topOrientation, botOrientation } = context || {};
-  if (!connectionPairs || !topOrientation || !botOrientation) {
-    // Insufficient context → do not block
-    return { ok: true };
-  }
-
+export function noPatternFromPatternLog(patternLog, options = {}) {
   try {
-    const horiEdges = buildHorizontalEdges(connectionPairs, topOrientation, botOrientation);
-    assertNoPattern(horiEdges, topOrientation, botOrientation);
+    const { groupMapRef = null } = options;
+    const adj = buildAdjacencyFromPatternLog(patternLog, groupMapRef);
+    assertNoPatternFromAdj(adj);
     return { ok: true };
   } catch (err) {
     return { ok: false, message: err?.message || 'No-Pattern condition failed!' };
   }
+}
+
+export function noPatternPreflightWithPatternLog(newPair, context = {}) {
+  const { topOrientation, botOrientation, groupMapRef, patternLog } = context || {};
+  if (!Array.isArray(newPair) || newPair.length !== 2) return { ok: true };
+
+  // Clone orientations and patternLog
+  const topClone = { current: new Map(topOrientation?.current || []) };
+  const botClone = { current: new Map(botOrientation?.current || []) };
+  const logClone = {
+    topSequence: Array.isArray(patternLog?.topSequence)
+      ? patternLog.topSequence.map(e => ({ ...e }))
+      : [],
+    bottomSequence: Array.isArray(patternLog?.bottomSequence)
+      ? patternLog.bottomSequence.map(e => ({ ...e }))
+      : [],
+  };
+
+  // Dry-run orientation on clones; apply flips to logClone via checkOrientation
+  const orientRes = checkOrientation(newPair, groupMapRef, topClone, botClone, { patternLog: logClone });
+  if (orientRes === -1) return { ok: false, message: 'Orientation condition failed!' };
+
+  // Simulate colour merge on groupMap clone (effective colours for edges)
+  const groupMapCloneRef = { current: new Map(groupMapRef?.current || []) };
+  try {
+    const noop = () => {};
+    checkAndGroupConnections(newPair, groupMapCloneRef, noop, [], noop, []);
+  } catch {
+    // ignore
+  }
+
+  // Append candidate horizontal edges for this pair using clones
+  const { topEdge, bottomEdge } = deriveHorizontalEdgesFromPair(newPair, topClone, botClone);
+  if (topEdge) logClone.topSequence.push(topEdge);
+  if (bottomEdge) logClone.bottomSequence.push(bottomEdge);
+
+  // Run noPattern on updated log
+  return noPatternFromPatternLog(logClone, { groupMapRef: groupMapCloneRef });
+}
+
+export function noPattern(latestPair, context) {
+  // Delegate to preflight path for consistency with noFold
+  return noPatternPreflightWithPatternLog(latestPair, context);
 }

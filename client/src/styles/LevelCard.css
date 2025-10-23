@@ -1,0 +1,71 @@
+.level-card {
+  width: 84px;
+  height: 49px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.level-card.unlocked:hover,
+.level-card.unlocked:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+  outline: none;
+}
+
+.level-card.locked {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+  position: relative;
+}
+
+.level-card.is-selected {
+  background: rgba(198, 179, 255, 0.9);
+  color: #1f1f1f;
+  box-shadow: 0 16px 32px rgba(139, 119, 217, 0.35);
+}
+
+.level-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.level-card__name {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.level-card__lock-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 12px;
+}
+
+.light-mode .level-card {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1c1c1c;
+}
+
+.light-mode .level-card.unlocked:hover,
+.light-mode .level-card.unlocked:focus-visible {
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+}
+
+.light-mode .level-card.locked {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.light-mode .level-card.is-selected {
+  background: rgba(198, 179, 255, 0.85);
+  color: #1f1f1f;
+}

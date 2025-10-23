@@ -1,72 +1,116 @@
-import { deriveHorizontalEdgesFromPair } from "./patternLog";
-
 /**
- * Pattern-log-driven no-fold checks. These helpers have replaced the legacy
- * map-based approach and operate entirely on the derived horizontal edge
- * sequences that the app maintains.
+ * Robust no-fold validation utilities.
+ *
+ * Derived horizontal edges are grouped by colour; for each colour we ensure a
+ * node has at most one outgoing and one incoming edge. Violations indicate a
+ * “fold” in the puzzle.
  */
 
-function cloneSequenceWithCandidate(sequence, candidate) {
-  const cloned = Array.isArray(sequence) ? [...sequence] : [];
+import { checkOrientation } from "./checkOrientation.js";
+import { deriveHorizontalEdgesFromPair } from "./patternLog.js";
+import { checkAndGroupConnections } from "./MergeUtils.js";
 
-  if (!candidate) {
-    return cloned;
-  }
+const FALLBACK_COLOR_PREFIX = "__uncoloured__:";
 
-  if (candidate.id) {
-    const existingIndex = cloned.findIndex(
-      (edge) => edge?.id && edge.id === candidate.id
-    );
-    if (existingIndex >= 0) {
-      cloned[existingIndex] = candidate;
-      return cloned;
-    }
-  }
-
-  cloned.push(candidate);
-  return cloned;
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-function checkSequence(sequence, sequenceName) {
-  const adjacency = new Map(); // from -> Map(color -> to)
-  const foldEdges = new Set();
+function ensureColor(color, key) {
+  return color ?? `${FALLBACK_COLOR_PREFIX}${key}`;
+}
 
-  for (const edge of sequence) {
-    if (!edge || !edge.orientation || !edge.nodes || edge.nodes.length !== 2) {
+function resolveColor(groupMapRef, combinationKey, fallbackColor) {
+  if (groupMapRef?.current && combinationKey) {
+    const group = groupMapRef.current.get(combinationKey);
+    if (group?.color) {
+      return group.color;
+    }
+  }
+  if (fallbackColor == null) {
+    console.warn(`[noFold] fallback colour used for ${combinationKey}`);
+  }
+  return fallbackColor;
+}
+
+// removed legacy helper getConnectionColor
+
+// Minimal helper used by noFoldFromPatternLog normalisation
+function normalizeCombination(nodeA, nodeB) {
+  const nodes = [nodeA, nodeB].sort();
+  return { nodes, key: nodes.join(',') };
+}
+
+// removed legacy helper normalizeCombination
+
+// removed legacy helper deriveOrientation
+
+// removed legacy helper classifyConnection
+
+// removed legacy helper buildHorizontalEdge
+
+// gatherHorizontalEdges was used by the legacy path; removed to keep single path via patternLog
+
+function recordFold(foldSet, edgeId) {
+  if (!edgeId) return;
+  foldSet.add(edgeId);
+}
+
+function checkSequence(edges, sequenceName) {
+  const foldEdges = new Set();
+  const colorMap = new Map(); // color -> { outgoing, incoming }
+
+  for (const edge of ensureArray(edges)) {
+    if (!edge || !edge.from || !edge.to) {
       continue;
     }
 
-    const [nodeA, nodeB] = edge.nodes;
-    const from = edge.orientation === "right" ? nodeA : nodeB;
-    const to = edge.orientation === "right" ? nodeB : nodeA;
-
-    if (!adjacency.has(from)) {
-      adjacency.set(from, new Map());
+    const color = edge.color ?? `${FALLBACK_COLOR_PREFIX}${edge.id ?? "unknown"}`;
+    if (!colorMap.has(color)) {
+      colorMap.set(color, {
+        outgoing: new Map(), // from -> { to, id }
+        incoming: new Map(), // to -> { from, id }
+      });
     }
 
-    const outEdges = adjacency.get(from);
+    const { outgoing, incoming } = colorMap.get(color);
+    const { from, to } = edge;
+    const edgeId = edge.id ?? `${from},${to}`;
 
-    if (outEdges.has(edge.color)) {
-      const existingTo = outEdges.get(edge.color);
-      if (existingTo !== to) {
-        foldEdges.add(edge.id ?? `${from},${to}`);
-        foldEdges.add(`${from},${existingTo}`);
+    if (outgoing.has(from)) {
+      const existing = outgoing.get(from);
+      if (existing.to !== to) {
         console.log(
-          `Fold detected in ${sequenceName}: ${from} has ${edge.color} going to both ${existingTo} and ${to}`
+          `Fold detected in ${sequenceName}: ${from} has ${color} going to both ${existing.to} and ${to}`
         );
+        recordFold(foldEdges, edgeId);
+        recordFold(foldEdges, existing.id);
       }
     } else {
-      outEdges.set(edge.color, to);
+      outgoing.set(from, { to, id: edgeId });
     }
 
-    if (adjacency.has(to)) {
-      const toOutEdges = adjacency.get(to);
-      if (toOutEdges.has(edge.color) && toOutEdges.get(edge.color) === from) {
-        foldEdges.add(edge.id ?? `${from},${to}`);
-        foldEdges.add(`${to},${from}`);
+    if (incoming.has(to)) {
+      const existing = incoming.get(to);
+      if (existing.from !== from) {
         console.log(
-          `Cycle detected in ${sequenceName}: ${from} <-> ${to} with color ${edge.color}`
+          `Fold detected in ${sequenceName}: ${to} receives ${color} from both ${existing.from} and ${from}`
         );
+        recordFold(foldEdges, edgeId);
+        recordFold(foldEdges, existing.id);
+      }
+    } else {
+      incoming.set(to, { from, id: edgeId });
+    }
+
+    if (outgoing.has(to)) {
+      const reverse = outgoing.get(to);
+      if (reverse.to === from) {
+        console.log(
+          `Cycle detected in ${sequenceName}: ${from} <-> ${to} with color ${color}`
+        );
+        recordFold(foldEdges, edgeId);
+        recordFold(foldEdges, reverse.id);
       }
     }
   }
@@ -74,41 +118,131 @@ function checkSequence(sequence, sequenceName) {
   return foldEdges;
 }
 
+export function noFold(latestPair, context = {}) {
+  // Delegate to the preflight check so we have a single, consistent logic path
+  // that accounts for orientation flips and colour merges caused by the pair.
+  return noFoldPreflightWithPatternLog(latestPair, context);
+}
+
 /**
- * Pattern-log based noFold check
- * @param {Object} patternLog - Pattern log with topSequence and bottomSequence
- * @param {Set<string>} [foldsFound] - Optional set to populate with fold edge IDs
- * @param {Object} [options]
- * @param {Object|null} [options.candidateTopEdge]
- * @param {Object|null} [options.candidateBottomEdge]
+ * Preflight no-fold check using patternLog before committing a new pair.
+ * This performs a dry-run orientation resolution on cloned maps, derives the
+ * candidate horizontal edges for the new pair, appends them onto a cloned
+ * patternLog, and then runs noFoldFromPatternLog. It does not mutate real state.
+ *
+ * @param {Array} newPair - Exactly two vertical connections to form a pair
+ * @param {Object} context
+ *  - connectionPairs: existing history (not strictly required here)
+ *  - topOrientation, botOrientation: refs with current orientation maps
+ *  - groupMapRef: ref to colour groups
+ *  - patternLog: current pattern log object { topSequence, bottomSequence }
  * @returns {{ ok: boolean, message?: string }}
  */
-export function noFoldFromPatternLog(patternLog, foldsFound, options = {}) {
-  if (!patternLog || (!patternLog.topSequence && !patternLog.bottomSequence)) {
+export function noFoldPreflightWithPatternLog(newPair, context = {}) {
+  const { topOrientation, botOrientation, groupMapRef, patternLog } = context;
+
+  if (!Array.isArray(newPair) || newPair.length !== 2) {
     return { ok: true };
   }
 
-  if (foldsFound) {
-    foldsFound.clear();
+  // Clone orientation maps so mutations during orientation resolution don't leak.
+  const topClone = { current: new Map(topOrientation?.current || []) };
+  const botClone = { current: new Map(botOrientation?.current || []) };
+
+  // Shallow-clone pattern log arrays (edges are immutable records for our purpose).
+  const logClone = {
+    topSequence: Array.isArray(patternLog?.topSequence)
+      ? patternLog.topSequence.map((e) => ({ ...e }))
+      : [],
+    bottomSequence: Array.isArray(patternLog?.bottomSequence)
+      ? patternLog.bottomSequence.map((e) => ({ ...e }))
+      : [],
+  };
+
+  // Dry-run orientation resolution on clones. If orientation fails, block.
+  const orientRes = checkOrientation(
+    newPair,
+    groupMapRef,
+    topClone,
+    botClone,
+    { patternLog: logClone }
+  );
+  if (orientRes === -1) {
+    return { ok: false, message: "Orientation condition failed!" };
   }
 
-  const { candidateTopEdge = null, candidateBottomEdge = null } = options;
+  // Simulate color group merge on a cloned groupMap, as this pair may merge groups
+  // and change effective colours seen by noFold.
+  const groupMapCloneRef = { current: new Map(groupMapRef?.current || []) };
+  try {
+    const noop = () => {};
+    const connectionsClone = [];
+    const connectionPairsClone = [];
+    checkAndGroupConnections(
+      newPair,
+      groupMapCloneRef,
+      noop,
+      connectionsClone,
+      noop,
+      connectionPairsClone
+    );
+  } catch {
+    // ignore: group merge simulation failure in preflight should not block
+  }
 
-  const topSequence = cloneSequenceWithCandidate(
-    patternLog.topSequence,
-    candidateTopEdge
+  // Derive candidate horizontal edges for this pair using the resolved orientations.
+  const { topEdge, bottomEdge } = deriveHorizontalEdgesFromPair(
+    newPair,
+    topClone,
+    botClone
   );
-  const bottomSequence = cloneSequenceWithCandidate(
-    patternLog.bottomSequence,
-    candidateBottomEdge
-  );
+  if (topEdge) logClone.topSequence.push(topEdge);
+  if (bottomEdge) logClone.bottomSequence.push(bottomEdge);
 
-  const topFolds = checkSequence(topSequence, "top");
-  const bottomFolds = checkSequence(bottomSequence, "bottom");
+  // Run no-fold check on the updated log clone.
+  const res = noFoldFromPatternLog(logClone, null, { groupMapRef: groupMapCloneRef });
+  return res && typeof res.ok === "boolean" ? res : { ok: true };
+}
 
+export function noFoldFromPatternLog(patternLog, foldsFound, options = {}) {
+  if (!patternLog) {
+    foldsFound?.clear?.();
+    return { ok: true };
+  }
+
+  const { groupMapRef = null } = options;
+
+  const normalise = (sequence) =>
+    ensureArray(sequence).map((edge) => {
+      const normalised = { ...edge };
+      const nodes = ensureArray(normalised.nodes);
+      if (nodes.length === 2) {
+        const { nodes: sortedNodes, key } = normalizeCombination(nodes[0], nodes[1]);
+        normalised.id = normalised.id ?? key;
+        normalised.nodes = sortedNodes;
+        const orientation = normalised.orientation === "left" ? "left" : "right";
+        normalised.orientation = orientation;
+        const color = ensureColor(
+          resolveColor(groupMapRef, normalised.id, normalised.color),
+          normalised.id
+        );
+        normalised.color = color;
+        const [first, second] = sortedNodes;
+        normalised.from = orientation === "right" ? first : second;
+        normalised.to = orientation === "right" ? second : first;
+      }
+      return normalised;
+    });
+
+  const topEdges = normalise(patternLog.topSequence);
+  const bottomEdges = normalise(patternLog.bottomSequence);
+
+  const topFolds = checkSequence(topEdges, "top");
+  const bottomFolds = checkSequence(bottomEdges, "bottom");
   const allFolds = new Set([...topFolds, ...bottomFolds]);
 
   if (foldsFound) {
+    foldsFound.clear();
     for (const fold of allFolds) {
       foldsFound.add(fold);
     }
@@ -119,36 +253,4 @@ export function noFoldFromPatternLog(patternLog, foldsFound, options = {}) {
   }
 
   return { ok: true };
-}
-
-/**
- * Unified noFold entry point that delegates entirely to the pattern-log
- * implementation. It accepts the current pattern log plus the latest pair and
- * returns a `{ ok, message }` result. Optional `foldsFound` metadata will be
- * populated from the pattern-log check when provided.
- *
- * @param {Array<{nodes: [string,string], color: string}>} latestPair - The most recent completed pair
- * @param {Object} context
- * @param {{ current: Map<string, 'left'|'right'> }} context.topOrientation
- * @param {{ current: Map<string, 'left'|'right'> }} context.botOrientation
- * @param {Set<string>} [context.foldsFound]
- * @param {Object} [context.patternLog]
- * @returns {{ ok: boolean, message?: string }}
- */
-export function noFold(latestPair, context) {
-  void latestPair;
-
-  const { topOrientation, botOrientation, foldsFound, patternLog } = context || {};
-
-  if (!patternLog) {
-    return { ok: true };
-  }
-
-  const { topEdge = null, bottomEdge = null } =
-    deriveHorizontalEdgesFromPair(latestPair, topOrientation, botOrientation) || {};
-
-  return noFoldFromPatternLog(patternLog, foldsFound, {
-    candidateTopEdge: topEdge,
-    candidateBottomEdge: bottomEdge,
-  });
 }
