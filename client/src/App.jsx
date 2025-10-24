@@ -16,6 +16,7 @@ import SettingIconImage from "./assets/setting-icon.png";
 
 import TaikoNode from "./components/TaikoNodes/TaikoNode";
 import ErrorModal from "./components/ErrorModal";
+import NoFoldViolationModal from "./components/NoFoldViolationModal";
 import SettingsMenu from "./components/ToolMenu/settingMenu";
 import ProgressBar from "./components/ProgressBar/progressBar";
 import Title from "./components/title";
@@ -55,6 +56,8 @@ const levelAliasMap = {
 };
 
 const validRuntimeLevels = Object.values(levelAliasMap).filter(Boolean);
+
+const NO_FOLD_FLASH_DURATION = 1600;
 
 function App() {
   // Game state management
@@ -150,6 +153,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState(false);
   const [Percent100Message, setPercent100Message] = useState(false);
+  const [noFoldModalData, setNoFoldModalData] = useState(null);
+  const [noFoldViolationState, setNoFoldViolationState] = useState(null);
 
   // Function to save current state to history.
   const saveToHistory = () => {
@@ -277,6 +282,52 @@ function App() {
     printFullConnectionLog,
   ]);
 
+  const triggerNoFoldFeedback = useCallback(
+    (result, options = {}) => {
+      const { message, violations } = result || {};
+      const shouldAutoUndo = options.autoUndo ?? false;
+
+      if (!Array.isArray(violations) || violations.length === 0) {
+        setNoFoldModalData(null);
+        setNoFoldViolationState(null);
+        setErrorMessage(message || "No-Fold condition failed!");
+        if (shouldAutoUndo) {
+          handleUndo();
+        }
+        return;
+      }
+
+      setErrorMessage("");
+
+      const seen = new Set();
+      const highlights = [];
+
+      violations.forEach((detail) => {
+        const sequence = detail?.sequence || "top";
+        if (!Array.isArray(detail?.edges)) return;
+        detail.edges.forEach((edge) => {
+          if (!edge?.id) return;
+          const key = `${sequence}:${edge.id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            highlights.push({ sequence, edgeId: edge.id });
+          }
+        });
+      });
+
+      setNoFoldViolationState({
+        highlights,
+        shouldUndoAfterFlash: shouldAutoUndo,
+      });
+
+      setNoFoldModalData({
+        message: message || "No-Fold condition failed!",
+        violations,
+      });
+    },
+    [handleUndo]
+  );
+
   /**
    * Sets welcome message visibility based on the number of nodes in each row.
    */
@@ -326,6 +377,63 @@ function App() {
     connectionPairs,
     offset,
   ]);
+
+  useEffect(() => {
+    if (!noFoldViolationState || !Array.isArray(noFoldViolationState.highlights)) {
+      return;
+    }
+
+    const svgEl = svgRef.current;
+    if (!svgEl) {
+      if (noFoldViolationState.shouldUndoAfterFlash) {
+        handleUndo();
+      }
+      setNoFoldViolationState(null);
+      return;
+    }
+
+    const edgeElements = Array.from(svgEl.querySelectorAll("[data-edge-id]"));
+    const highlightedElements = [];
+
+    noFoldViolationState.highlights.forEach(({ sequence, edgeId }) => {
+      edgeElements.forEach((element) => {
+        if (
+          element.getAttribute("data-edge-id") === edgeId &&
+          element.getAttribute("data-sequence") === sequence
+        ) {
+          if (!element.classList.contains("no-fold-violation-flash")) {
+            element.classList.add("no-fold-violation-flash");
+            highlightedElements.push(element);
+          }
+        }
+      });
+    });
+
+    if (highlightedElements.length === 0) {
+      if (noFoldViolationState.shouldUndoAfterFlash) {
+        handleUndo();
+      }
+      setNoFoldViolationState(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      highlightedElements.forEach((element) => {
+        element.classList.remove("no-fold-violation-flash");
+      });
+      if (noFoldViolationState.shouldUndoAfterFlash) {
+        handleUndo();
+      }
+      setNoFoldViolationState(null);
+    }, NO_FOLD_FLASH_DURATION);
+
+    return () => {
+      clearTimeout(timeoutId);
+      highlightedElements.forEach((element) => {
+        element.classList.remove("no-fold-violation-flash");
+      });
+    };
+  }, [noFoldViolationState, handleUndo]);
 
   /**
    * Checks if new nodes should be added based on current connections.
@@ -429,9 +537,14 @@ function App() {
           patternLog: patternLogRef.current,
         });
         if (!validation.ok) {
-          setErrorMessage(validation.message || "Level condition failed!");
           setSelectedNodes([]);
-          handleUndo();
+          setHighlightedNodes([]);
+          if (validation.code === "NO_FOLD") {
+            triggerNoFoldFeedback(validation, { autoUndo: true });
+          } else {
+            setErrorMessage(validation.message || "Level condition failed!");
+            handleUndo();
+          }
           return;
         }
         processedPairKeysRef.current.add(pairKey);
@@ -485,7 +598,7 @@ function App() {
     console.log("topOrientation", topOrientation);
     console.log("botOrientation", botOrientation);
     console.log("groupMapRef", groupMapRef);
-  }, [connectionPairs, level, connections, topRowCount, bottomRowCount, handleUndo, offset]);
+  }, [connectionPairs, level, connections, topRowCount, bottomRowCount, handleUndo, offset, triggerNoFoldFeedback]);
 
   const createTopRow = (count) =>
     Array.from({ length: count }, (_, i) => (
@@ -523,6 +636,10 @@ function App() {
 
   // Updated node click handler.
   const handleNodeClick = (nodeId) => {
+    if (noFoldViolationState) {
+      return;
+    }
+
     setErrorMessage("");
 
     if (soundBool) clickAudio.play();
@@ -691,12 +808,9 @@ function App() {
       });
       if (!preflight.ok) {
         if (soundBool) errorAudio.play();
-        setErrorMessage(preflight.message || "No-Fold condition failed!");
         setSelectedNodes([]);
         setHighlightedNodes([]);
-        // Automatically undo the pending first edge so user can start a fresh pair
-        // (we saved history when the first edge was added)
-        handleUndo();
+        triggerNoFoldFeedback(preflight, { autoUndo: true });
         return;
       }
 
@@ -831,6 +945,10 @@ function App() {
       <button onClick={handleUndo} className="undo-button">
         Undo
       </button>
+      <NoFoldViolationModal
+        data={noFoldModalData}
+        onClose={() => setNoFoldModalData(null)}
+      />
       <ErrorModal
         className="error-container"
         message={errorMessage}
