@@ -17,7 +17,7 @@ const modalStyles = {
     boxSizing: "border-box",
   },
   dialog: {
-    backgroundColor: "white",
+    backgroundColor: "#ffffffcb",
     padding: "32px",
     borderRadius: "12px",
     boxShadow: "0 6px 24px rgba(0, 0, 0, 0.25)",
@@ -178,23 +178,23 @@ const NoFoldViolationModal = ({ data, onClose }) => {
   return (
     <div style={modalStyles.overlay}>
       <div style={modalStyles.dialog} role="alertdialog" aria-modal="true">
-        <h2 style={modalStyles.header}>No-Fold Warning</h2>
-        <p>{message || "No-Fold condition failed."}</p>
+        <h2 style={modalStyles.header}>Obstacles: No fold condition failure detected!</h2>
+        <p>{"You created a fold on: "}</p>
         {uniqueEdges.length > 0 && (
           <ul style={modalStyles.list}>
             {uniqueEdges.map((edge) => {
               const sequenceLabel = edge.sequence === "bottom" ? "Bottom" : "Top";
               const nodesLabel = edge.displayNodes.length
-                ? edge.displayNodes.join(" <-> ")
-                : splitIdIntoNodes(edge.id).map(formatNodeLabel).join(" <-> ") || edge.id;
+                ? edge.displayNodes.join(" to ")
+                : splitIdIntoNodes(edge.id).map(formatNodeLabel).join(" to ") || edge.id;
               return (
                 <li key={edge.key} style={modalStyles.listItem}>
-                  <span style={modalStyles.badge}>{sequenceLabel}</span>
+                  {/* <span style={modalStyles.badge}>{sequenceLabel}</span> */}
                   <span style={{ ...modalStyles.colorSwatch, backgroundColor: edge.color }} />
-                  <strong>{nodesLabel}</strong>
+                  <strong>Edge between: {nodesLabel}</strong>
                   <div style={modalStyles.secondaryText}>
-                    Orientation: {edge.orientation || "right"}
-                    {edge.displayPairId ? ` | Pair: ${edge.displayPairId}` : ""}
+                    {/* {"The edge between these two vertices is not invalid."} */}
+                    {/* {edge.displayPairId ? ` | Pair: ${edge.displayPairId}` : ""} */}
                   </div>
                 </li>
               );
