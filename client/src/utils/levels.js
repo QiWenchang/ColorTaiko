@@ -14,20 +14,20 @@ export const levelGraph = {
   { id: "level-3-nf", name: "Level 3.NF", unlocked: true, xPercent: 50, yPercent: 54 },
   { id: "level-3-g4", name: "Level 3.G4", unlocked: true, xPercent: 84, yPercent: 54 },
   { id: "level-4-nf-np", name: "Level 4.NF+NP", unlocked: true, xPercent: 26, yPercent: 32 },
-  { id: "level-4-g4", name: "Level 4.G4", unlocked: true, xPercent: 74, yPercent: 32 },
-  { id: "level-5-np-g4", name: "Level 5.NP+G4", unlocked: true, xPercent: 50, yPercent: 12 },
-  { id: "level-5-np-g6", name: "Level 5.NP+G6", unlocked: true, xPercent: 88, yPercent: 8 },
+  { id: "level-4-nf-g4", name: "Level 4.NF+G4", unlocked: true, xPercent: 74, yPercent: 32 },
+  { id: "level-5-nf-np-g4", name: "Level 5.NF+NP+G4", unlocked: true, xPercent: 50, yPercent: 12 },
+  { id: "level-5-nf-np-g6", name: "Level 5.NF+NP+G6", unlocked: true, xPercent: 88, yPercent: 8 },
   ],
   edges: [
     ["level-1", "level-2"],
     ["level-2", "level-3-nf"],
     ["level-2", "level-3-g4"],
     ["level-3-nf", "level-4-nf-np"],
-    ["level-3-nf", "level-4-g4"],
-    ["level-4-nf-np", "level-5-np-g4"],
-    ["level-4-g4", "level-5-np-g4"],
-    ["level-5-np-g4", "level-5-np-g6"],
-    ["level-3-g4", "level-5-np-g6"],
+    ["level-3-nf", "level-4-nf-g4"],
+    ["level-4-nf-np", "level-5-nf-np-g4"],
+    ["level-4-nf-g4", "level-5-nf-np-g4"],
+    ["level-5-nf-np-g4", "level-5-nf-np-g6"],
+    ["level-3-g4", "level-5-nf-np-g6"],
   ],
 };
 
@@ -37,15 +37,14 @@ export const levelDescriptions = {
   "Level 3.NF": ["color merging", "orientation", "no-fold"],
   "Level 3.G4": ["color merging", "orientation", "girth-4"],
   "Level 4.NF+NP": ["color merging", "orientation", "no-fold", "no-pattern"],
-  "Level 4.G4": ["color merging", "orientation", "girth-4"],
-  "Level 5.NP+G4": ["color merging", "orientation", "no-pattern", "girth-4"],
-  "Level 5.NP+G6": ["color merging", "orientation", "no-pattern", "girth-6"],
+  "Level 4.NF+G4": ["color merging", "orientation", "no-fold", "girth-4"],
+  "Level 5.NF+NP+G4": ["color merging", "orientation", "no-fold", "no-pattern", "girth-4"],
+  "Level 5.NF+NP+G6": ["color merging", "orientation", "no-fold", "no-pattern", "girth-6"],
 };
 
 // Levels that include the No-Pattern constraint
 export const levelsWithNoPattern = new Set([
   "Level 4.NF+NP",
-  "Level 4.G4",
   "Level 5.NP+G4",
   "Level 5.NP+G6",
 ]);
@@ -117,7 +116,7 @@ export function getChecksForLevel(level) {
     case "Level 4.NF+NP":
       return [orientationCheck, noFoldCheck, noPatternCheck];
     case "Level 4.G4":
-      return [orientationCheck, noFoldCheck, noPatternCheck, girthCheck(4)];
+      return [orientationCheck, noFoldCheck, girthCheck(4)];
     case "Level 5.NP+G4":
       return [orientationCheck, noFoldCheck, noPatternCheck, girthCheck(4)];
     case "Level 5.NP+G6":

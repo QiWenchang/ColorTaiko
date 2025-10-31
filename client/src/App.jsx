@@ -50,9 +50,9 @@ const levelAliasMap = {
   "Level 3.NF": "Level 3.NF",
   "Level 3.G4": "Level 3.G4",
   "Level 4.NF+NP": "Level 4.NF+NP",
-  "Level 4.G4": "Level 4.G4",
-  "Level 5.NP+G4": "Level 5.NP+G4",
-  "Level 5.NP+G6": "Level 5.NP+G6",
+  "Level 4.NF+G4": "Level 4.NF+G4",
+  "Level 5.NF+NP+G4": "Level 5.NF+NP+G4",
+  "Level 5.NF+NP+G6": "Level 5.NF+NP+G6",
 };
 
 const validRuntimeLevels = Object.values(levelAliasMap).filter(Boolean);
