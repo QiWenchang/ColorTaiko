@@ -7,7 +7,7 @@ const modalStyles = {
     left: 0,
     width: "100%",
     height: "100%",
-    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    backgroundColor: "transparent",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -78,6 +78,69 @@ const modalStyles = {
   },
 };
 
+const TOP_PREFIX = "top-";
+const BOTTOM_PREFIX = "bottom-";
+
+const toOneIndex = (value) => {
+  const numeric = Number.parseInt(value, 10);
+  return Number.isNaN(numeric) ? value : numeric + 1;
+};
+
+const formatNodeLabel = (raw) => {
+  if (typeof raw !== "string") return raw;
+  if (raw.startsWith(BOTTOM_PREFIX)) {
+    return `a${toOneIndex(raw.slice(BOTTOM_PREFIX.length))}`;
+  }
+  if (raw.startsWith(TOP_PREFIX)) {
+    return `b${toOneIndex(raw.slice(TOP_PREFIX.length))}`;
+  }
+  return raw;
+};
+
+const splitIdIntoNodes = (id) => {
+  if (typeof id !== "string") return [];
+  return id.split(",").map((part) => part.trim()).filter(Boolean);
+};
+
+const parseJsonMaybe = (serialized) => {
+  if (typeof serialized !== "string") return null;
+  const trimmed = serialized.trim();
+  if (
+    (!trimmed.startsWith("[") || !trimmed.endsWith("]")) &&
+    (!trimmed.startsWith("{") || !trimmed.endsWith("}"))
+  ) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+};
+
+const formatPairId = (pairId) => {
+  const normalise = (value) => {
+    if (Array.isArray(value)) {
+      return `[${value.map(normalise).join(", ")}]`;
+    }
+    if (typeof value === "string") {
+      const parsed = parseJsonMaybe(value);
+      if (parsed) {
+        return normalise(parsed);
+      }
+      const segments = value.split("|");
+      if (segments.length === 2) {
+        return segments.map(formatNodeLabel).join("|");
+      }
+      return formatNodeLabel(value);
+    }
+    return String(value);
+  };
+
+  const formatted = normalise(pairId);
+  return formatted === "undefined" ? "" : formatted;
+};
+
 const NoFoldViolationModal = ({ data, onClose }) => {
   if (!data) return null;
 
@@ -91,14 +154,19 @@ const NoFoldViolationModal = ({ data, onClose }) => {
         if (!edge?.id) return;
         const key = `${sequence}:${edge.id}`;
         if (!edgeMap.has(key)) {
+          const rawNodes = Array.isArray(edge.nodes) ? edge.nodes : [];
+          const nodesFromId = rawNodes.length > 0 ? rawNodes : splitIdIntoNodes(edge.id);
+          const displayNodes = nodesFromId.map(formatNodeLabel);
           edgeMap.set(key, {
             key,
             id: edge.id,
             sequence,
-            nodes: Array.isArray(edge.nodes) ? edge.nodes : [],
+            nodes: nodesFromId,
+            displayNodes,
             color: edge.color || "#ff4d4f",
             orientation: edge.orientation || "right",
             pairId: edge.pairId || null,
+            displayPairId: edge.pairId ? formatPairId(edge.pairId) : "",
           });
         }
       });
@@ -116,7 +184,9 @@ const NoFoldViolationModal = ({ data, onClose }) => {
           <ul style={modalStyles.list}>
             {uniqueEdges.map((edge) => {
               const sequenceLabel = edge.sequence === "bottom" ? "Bottom" : "Top";
-              const nodesLabel = edge.nodes.join(" <-> ") || edge.id;
+              const nodesLabel = edge.displayNodes.length
+                ? edge.displayNodes.join(" <-> ")
+                : splitIdIntoNodes(edge.id).map(formatNodeLabel).join(" <-> ") || edge.id;
               return (
                 <li key={edge.key} style={modalStyles.listItem}>
                   <span style={modalStyles.badge}>{sequenceLabel}</span>
@@ -124,7 +194,7 @@ const NoFoldViolationModal = ({ data, onClose }) => {
                   <strong>{nodesLabel}</strong>
                   <div style={modalStyles.secondaryText}>
                     Orientation: {edge.orientation || "right"}
-                    {edge.pairId ? ` | Pair: ${edge.pairId}` : ""}
+                    {edge.displayPairId ? ` | Pair: ${edge.displayPairId}` : ""}
                   </div>
                 </li>
               );

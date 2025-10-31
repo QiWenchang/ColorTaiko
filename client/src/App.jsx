@@ -155,6 +155,13 @@ function App() {
   const [Percent100Message, setPercent100Message] = useState(false);
   const [noFoldModalData, setNoFoldModalData] = useState(null);
   const [noFoldViolationState, setNoFoldViolationState] = useState(null);
+  const noFoldHighlightedElementsRef = useRef([]);
+  const noFoldModalTimerRef = useRef(null);
+  const noFoldViolationStateRef = useRef(null);
+
+  useEffect(() => {
+    noFoldViolationStateRef.current = noFoldViolationState;
+  }, [noFoldViolationState]);
 
   // Function to save current state to history.
   const saveToHistory = () => {
@@ -282,12 +289,43 @@ function App() {
     printFullConnectionLog,
   ]);
 
+  const clearNoFoldEffects = useCallback(
+    (options = {}) => {
+      const { skipUndo = false } = options;
+
+      if (noFoldModalTimerRef.current) {
+        clearTimeout(noFoldModalTimerRef.current);
+        noFoldModalTimerRef.current = null;
+      }
+
+      if (noFoldHighlightedElementsRef.current.length > 0) {
+        noFoldHighlightedElementsRef.current.forEach((element) => {
+          if (element?.classList) {
+            element.classList.remove("no-fold-violation-flash");
+          }
+        });
+        noFoldHighlightedElementsRef.current = [];
+      }
+
+      const latestState = noFoldViolationStateRef.current;
+      if (!skipUndo && latestState?.shouldUndoAfterFlash) {
+        handleUndo();
+      }
+
+      if (noFoldViolationStateRef.current) {
+        setNoFoldViolationState(null);
+      }
+    },
+    [handleUndo]
+  );
+
   const triggerNoFoldFeedback = useCallback(
     (result, options = {}) => {
       const { message, violations } = result || {};
       const shouldAutoUndo = options.autoUndo ?? false;
 
       if (!Array.isArray(violations) || violations.length === 0) {
+        clearNoFoldEffects({ skipUndo: true });
         setNoFoldModalData(null);
         setNoFoldViolationState(null);
         setErrorMessage(message || "No-Fold condition failed!");
@@ -298,6 +336,8 @@ function App() {
       }
 
       setErrorMessage("");
+      clearNoFoldEffects({ skipUndo: true });
+      setNoFoldModalData(null);
 
       const seen = new Set();
       const highlights = [];
@@ -318,15 +358,17 @@ function App() {
       setNoFoldViolationState({
         highlights,
         shouldUndoAfterFlash: shouldAutoUndo,
-      });
-
-      setNoFoldModalData({
         message: message || "No-Fold condition failed!",
         violations,
       });
     },
-    [handleUndo]
+    [clearNoFoldEffects, handleUndo]
   );
+
+  const handleNoFoldModalClose = useCallback(() => {
+    setNoFoldModalData(null);
+    clearNoFoldEffects();
+  }, [clearNoFoldEffects]);
 
   /**
    * Sets welcome message visibility based on the number of nodes in each row.
@@ -383,19 +425,30 @@ function App() {
       return;
     }
 
+    const { highlights, message, violations } = noFoldViolationState;
     const svgEl = svgRef.current;
+
     if (!svgEl) {
-      if (noFoldViolationState.shouldUndoAfterFlash) {
-        handleUndo();
-      }
-      setNoFoldViolationState(null);
+      setNoFoldModalData({
+        message: message || "No-Fold condition failed!",
+        violations,
+      });
       return;
     }
 
-    const edgeElements = Array.from(svgEl.querySelectorAll("[data-edge-id]"));
-    const highlightedElements = [];
+    if (noFoldHighlightedElementsRef.current.length > 0) {
+      noFoldHighlightedElementsRef.current.forEach((element) => {
+        if (element?.classList) {
+          element.classList.remove("no-fold-violation-flash");
+        }
+      });
+      noFoldHighlightedElementsRef.current = [];
+    }
 
-    noFoldViolationState.highlights.forEach(({ sequence, edgeId }) => {
+    const edgeElements = Array.from(svgEl.querySelectorAll("[data-edge-id]"));
+    const newlyHighlighted = [];
+
+    highlights.forEach(({ sequence, edgeId }) => {
       edgeElements.forEach((element) => {
         if (
           element.getAttribute("data-edge-id") === edgeId &&
@@ -403,37 +456,41 @@ function App() {
         ) {
           if (!element.classList.contains("no-fold-violation-flash")) {
             element.classList.add("no-fold-violation-flash");
-            highlightedElements.push(element);
           }
+          newlyHighlighted.push(element);
         }
       });
     });
 
-    if (highlightedElements.length === 0) {
-      if (noFoldViolationState.shouldUndoAfterFlash) {
-        handleUndo();
-      }
-      setNoFoldViolationState(null);
+    if (newlyHighlighted.length === 0) {
+      setNoFoldModalData({
+        message: message || "No-Fold condition failed!",
+        violations,
+      });
       return;
     }
 
-    const timeoutId = setTimeout(() => {
-      highlightedElements.forEach((element) => {
-        element.classList.remove("no-fold-violation-flash");
+    noFoldHighlightedElementsRef.current = newlyHighlighted;
+
+    if (noFoldModalTimerRef.current) {
+      clearTimeout(noFoldModalTimerRef.current);
+    }
+
+    noFoldModalTimerRef.current = setTimeout(() => {
+      setNoFoldModalData({
+        message: message || "No-Fold condition failed!",
+        violations,
       });
-      if (noFoldViolationState.shouldUndoAfterFlash) {
-        handleUndo();
-      }
-      setNoFoldViolationState(null);
+      noFoldModalTimerRef.current = null;
     }, NO_FOLD_FLASH_DURATION);
 
     return () => {
-      clearTimeout(timeoutId);
-      highlightedElements.forEach((element) => {
-        element.classList.remove("no-fold-violation-flash");
-      });
+      if (noFoldModalTimerRef.current) {
+        clearTimeout(noFoldModalTimerRef.current);
+        noFoldModalTimerRef.current = null;
+      }
     };
-  }, [noFoldViolationState, handleUndo]);
+  }, [noFoldViolationState, setNoFoldModalData]);
 
   /**
    * Checks if new nodes should be added based on current connections.
@@ -516,6 +573,12 @@ function App() {
     window.addEventListener("mouseup", handleMouseUp);
     return () => window.removeEventListener("mouseup", handleMouseUp);
   }, [isDraggingLine, currentLineEl, selectedNodes]);
+
+  useEffect(() => {
+    return () => {
+      clearNoFoldEffects({ skipUndo: true });
+    };
+  }, [clearNoFoldEffects]);
 
   /**
    * Groups connections when a new connection pair is completed.
@@ -947,7 +1010,7 @@ function App() {
       </button>
       <NoFoldViolationModal
         data={noFoldModalData}
-        onClose={() => setNoFoldModalData(null)}
+        onClose={handleNoFoldModalClose}
       />
       <ErrorModal
         className="error-container"
