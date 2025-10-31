@@ -1,0 +1,93 @@
+
+.mini-level-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+}
+
+.mini-level-selector__svg {
+  width: 72px;
+  height: 48px;
+  display: block;
+  color: #fff; /* default for dark mode */
+  cursor: pointer; /* make whole svg visually clickable */
+}
+
+/* Remove the default focus ring on mouse click, but keep a visible focus for keyboard users */
+.mini-level-selector__svg:focus {
+  outline: none;
+}
+.mini-level-selector__svg:focus-visible {
+  outline: 2px solid rgba(0, 123, 255, 0.35);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.mini-level-node { cursor: pointer; }
+.mini-level-node:focus { outline: none; }
+.mini-level-node:focus-visible {
+  outline: 2px solid rgba(0,123,255,0.35);
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+.mini-level-node.locked { cursor: not-allowed; opacity: 0.55; }
+
+.mini-level-node__circle {
+  fill: currentColor;
+  stroke: rgba(255,255,255,0.12);
+  stroke-width: 0.5;
+}
+
+/* Halo placed behind the node to highlight without shifting */
+.mini-level-node__halo {
+  fill: var(--accent, #ffb400);
+  opacity: 0.18;
+  pointer-events: none; /* keep clicks routed to group */
+  filter: drop-shadow(0 0 6px rgba(255, 180, 64, 0.25));
+}
+
+/* Selected circle appearance */
+.mini-level-node.selected .mini-level-node__circle {
+  fill: var(--accent, #ffb400);
+  stroke: rgba(0,0,0,0.7);
+  stroke-width: 1.2;
+}
+
+.mini-level-selector__expand {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: inherit;
+  font-size: 12px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mini-level-selector__expand:hover { background: rgba(255,255,255,0.03); }
+.mini-level-selector__expand:focus { outline: none; }
+.mini-level-selector__expand:focus-visible { outline: 2px solid rgba(0,123,255,0.35); outline-offset: 3px; }
+
+/* Light mode overrides to ensure contrast on white background */
+.light-mode .mini-level-selector__svg {
+  color: #111; /* nodes and edges use currentColor */
+}
+
+.light-mode .mini-level-selector__expand {
+  border-color: rgba(0,0,0,0.08);
+}
+
+.light-mode .mini-level-node__circle {
+  stroke: rgba(0,0,0,0.12);
+}
+
+.light-mode .mini-level-node.selected .mini-level-node__circle {
+  fill: var(--accent, #007bff);
+  stroke: rgba(255,255,255,0.9);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 6px rgba(0, 123, 255, 0.18));
+}

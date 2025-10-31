@@ -24,6 +24,7 @@ import { useSettings } from "./hooks/useSetting";
 
 // import {checkGirth} from "./utils/girth"
 import LevelTreeModal from "./components/LevelTreeModal/LevelTreeModal";
+import MiniLevelSelector from "./components/LevelTreeModal/MiniLevelSelector";
 import { levelGraph, levelDescriptions, runLevelChecks } from "./utils/levels";
 
 const buildPairKey = (pair) => {
@@ -790,25 +791,12 @@ function App() {
         onClick={() => setShowSettings((prev) => !prev)}
       />
       <div className="level-icon-wrapper">
-        <button
-          type="button"
-          className="level-icon"
-          onClick={() => setIsLevelModalOpen(true)}
-          aria-label="Choose level"
-        >
-          <svg
-            className="level-icon__glyph"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            role="img"
-            aria-hidden="true"
-          >
-            <path
-              fill="currentColor"
-              d="M10 3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3h3a1 1 0 0 1 1 1v2.586l1.707 1.707a1 1 0 0 1 0 1.414L18 14.414V20a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-3H8a1 1 0 0 1-1-1v-2.586l-1.707-1.707a1 1 0 0 1 0-1.414L7 9.586V7a1 1 0 0 1 1-1h3V3Zm2 1v3a1 1 0 0 1-1 1H9v1.586l-1.293 1.293L9 11.586V14h4a1 1 0 0 1 1 1v3h2v-4.414l1.293-1.293L16 10.414V8h-3a1 1 0 0 1-1-1V4h-1Z"
-            />
-          </svg>
-        </button>
+        <MiniLevelSelector
+          graph={levelGraph}
+          selectedLevel={selectedLevel}
+          onSelect={handleLevelSelect}
+          onOpenFull={() => setIsLevelModalOpen(true)}
+        />
         {selectedLevel && (
           <span className="level-icon__caption">{selectedLevel}</span>
         )}
