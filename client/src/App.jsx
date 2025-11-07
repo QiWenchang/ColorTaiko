@@ -6,7 +6,8 @@ import { checkAndGroupConnections } from "./utils/MergeUtils";
 import { calculateProgress } from "./utils/calculateProgress";
 import { checkAndAddNewNodes } from "./utils/checkAndAddNewNodes";
 import { getConnectedNodes } from "./utils/getConnectedNodes";
-import { appendHorizontalEdges, clearPatternLog, rebuildPatternLog } from "./utils/patternLog";
+import { appendHorizontalEdges, clearPatternLog } from "./utils/patternLog";
+import { makeInitialHistoryEntry, rebuildProcessedPairKeys, restorePatternLogFromSnapshot, fixColorsAfterUndo } from "./utils/historyUtils";
 import { noFoldPreflightWithPatternLog } from "./utils/noFold";
 import { noPatternPreflightWithPatternLog } from "./utils/noPattern";
 import { levelsWithNoPattern } from "./utils/levels";
@@ -87,19 +88,7 @@ function App() {
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [isLevelModalOpen, setIsLevelModalOpen] = useState(false);
 
-  const [history, setHistory] = useState([
-    {
-      connections: [],
-      connectionPairs: [],
-      connectionGroups: [],
-      topRowCount: 1,
-      bottomRowCount: 1,
-      edgeState: null,
-      groupMap: new Map(),
-      topOrientationMap: new Map(),
-      botOrientationMap: new Map(),
-    },
-  ]);
+  const [history, setHistory] = useState([makeInitialHistoryEntry()]);
   const [currentStep, setCurrentStep] = useState(0);
 
   // Maintain an append‑only log of connection actions.
@@ -176,6 +165,7 @@ function App() {
       groupMap: structuredClone(groupMapRef.current),
       topOrientationMap: structuredClone(topOrientation.current),
       botOrientationMap: structuredClone(botOrientation.current),
+      currentColorIndex: currentColor,
     };
 
     setHistory([...history, newState]);
@@ -195,6 +185,16 @@ function App() {
   // Updated handleUndo function with console logging.
   const handleUndo = useCallback(() => {
     if (currentStep > 0) {
+      // Prevent any pending auto-undo from firing after this manual undo
+      if (noFoldViolationStateRef.current?.shouldUndoAfterFlash) {
+        noFoldViolationStateRef.current = null;
+        setNoFoldViolationState(null);
+        setNoFoldModalData(null);
+        if (noFoldModalTimerRef.current) {
+          clearTimeout(noFoldModalTimerRef.current);
+          noFoldModalTimerRef.current = null;
+        }
+      }
       console.log("Before undo:");
       console.log("connections:", connections);
       console.log("connectionPairs:", connectionPairs);
@@ -210,34 +210,28 @@ function App() {
       console.log("topOrientation:", topOrientation.current);
       console.log("botOrientation:", botOrientation.current);
 
+      // Take the snapshot we saved before the last user action
       const previousState = history[currentStep];
 
-      const processedKeys = new Set();
-      previousState.connectionPairs.forEach((pair) => {
-        if (Array.isArray(pair) && pair.length === 2) {
-          const key = buildPairKey(pair);
-          if (key) {
-            processedKeys.add(key);
-          }
-        }
-      });
-      processedPairKeysRef.current = processedKeys;
+      // Normalize snapshot colors via helper before restoring
+      fixColorsAfterUndo(previousState);
+
+      processedPairKeysRef.current = rebuildProcessedPairKeys(previousState.connectionPairs, buildPairKey);
       
       // Rebuild pattern log from previous state
-      rebuildPatternLog(
-        patternLogRef.current,
-        previousState.connectionPairs,
-        { current: new Map(previousState.topOrientationMap) },
-        { current: new Map(previousState.botOrientationMap) }
-      );
+      restorePatternLogFromSnapshot(patternLogRef, previousState);
 
-      // Restore state variables.
-      setConnections(previousState.connections);
+  // Restore state variables.
+  setConnections(previousState.connections);
       setConnectionPairs(previousState.connectionPairs);
       setConnectionGroups(previousState.connectionGroups);
       setTopRowCount(previousState.topRowCount);
       setBottomRowCount(previousState.bottomRowCount);
       setEdgeState(previousState.edgeState);
+      // Restore current color index for future generated colors
+      if (typeof previousState.currentColorIndex === 'number') {
+        setCurrentColor(previousState.currentColorIndex);
+      }
 
       // Restore ref values.
       groupMapRef.current = new Map(previousState.groupMap);
@@ -778,19 +772,7 @@ function App() {
     botOrientation.current.clear();
     processedPairKeysRef.current = new Set();
     clearPatternLog(patternLogRef.current);    // Reset history and clear the connection log.
-    setHistory([
-      {
-        connections: [],
-        connectionPairs: [],
-        connectionGroups: [],
-        topRowCount: 1,
-        bottomRowCount: 1,
-        edgeState: null,
-        groupMap: new Map(),
-        topOrientationMap: new Map(),
-        botOrientationMap: new Map(),
-      },
-    ]);
+    setHistory([makeInitialHistoryEntry()]);
     setCurrentStep(0);
     connectionLogRef.current = [];
   };
@@ -861,7 +843,7 @@ function App() {
     if (edgeState) {
       // Preflight noFold using patternLog before committing the second edge
       newColor = edgeState.color;
-      const candidateConnection = { nodes: [node1, node2], color: newColor };
+      const candidateConnection = { nodes: [node1, node2], color: newColor, seedColor: edgeState.seedColor ?? newColor };
       const candidatePair = [edgeState, candidateConnection];
 
       const preflight = noFoldPreflightWithPatternLog(candidatePair, {
@@ -922,7 +904,7 @@ function App() {
       printFullConnectionLog();
     } else {
       newColor = generateColor(currentColor, setCurrentColor, connectionPairs);
-      const newConnection = { nodes: [node1, node2], color: newColor };
+      const newConnection = { nodes: [node1, node2], color: newColor, seedColor: newColor };
       // Save current state before updating the first edge of a pair
       saveToHistory();
       setConnections([...connections, newConnection]);
