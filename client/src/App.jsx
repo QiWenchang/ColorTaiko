@@ -555,19 +555,40 @@ function App() {
   }, [isDraggingLine, currentLineEl]);
 
   useEffect(() => {
-    const handleMouseUp = () => {
+    const handleMouseUp = (e) => {
+      if (!isDraggingLine) return;
+      // If we're dragging (one node selected) and mouse up occurred on blank area (not a node)
+      // then cancel the selection.
+      const target = e.target;
+      // Treat it as a node click if the event target or any ancestor has an id starting with top- or bottom-
+      let isNode = false;
+      if (target && typeof target.closest === 'function') {
+        const nodeEl = target.closest("[id^='top-'], [id^='bottom-']");
+        isNode = !!nodeEl;
+      }
+      if (!isNode && selectedNodes.length === 1) {
+        // remove the temporary line
+        if (currentLineEl && svgRef.current.contains(currentLineEl)) {
+          svgRef.current.removeChild(currentLineEl);
+        }
+        setSelectedNodes([]);
+        setHighlightedNodes([]);
+        setIsDraggingLine(false);
+        setCurrentLineEl(null);
+        return;
+      }
+      // Existing fallback: mouse up without completing second node also cleans up line
       if (isDraggingLine && !selectedNodes[1]) {
         if (currentLineEl && svgRef.current.contains(currentLineEl)) {
           svgRef.current.removeChild(currentLineEl);
         }
         setIsDraggingLine(false);
-  // setStartNode(null);
         setCurrentLineEl(null);
       }
     };
     window.addEventListener("mouseup", handleMouseUp);
     return () => window.removeEventListener("mouseup", handleMouseUp);
-  }, [isDraggingLine, currentLineEl, selectedNodes]);
+  }, [isDraggingLine, currentLineEl, selectedNodes, svgRef]);
 
   useEffect(() => {
     return () => {
