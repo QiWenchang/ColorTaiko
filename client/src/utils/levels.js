@@ -115,11 +115,11 @@ export function getChecksForLevel(level) {
       return [orientationCheck, girthCheck(4)];
     case "Level 4.NF+NP":
       return [orientationCheck, noFoldCheck, noPatternCheck];
-    case "Level 4.G4":
+    case "Level 4.NF+G4":
       return [orientationCheck, noFoldCheck, girthCheck(4)];
-    case "Level 5.NP+G4":
+    case "Level 5.NF+NP+G4":
       return [orientationCheck, noFoldCheck, noPatternCheck, girthCheck(4)];
-    case "Level 5.NP+G6":
+    case "Level 5.NF+NP+G6":
       return [orientationCheck, noFoldCheck, noPatternCheck, girthCheck(6)];
 
     default:
