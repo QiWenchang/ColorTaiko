@@ -141,6 +141,7 @@ function App() {
 
   // References for SVG elements and connection groups.
   const [showSettings, setShowSettings] = useState(false);
+  const iconRef = useRef(null);
   const [welcomeMessage, setWelcomeMessage] = useState(false);
   const [Percent100Message, setPercent100Message] = useState(false);
   const [noFoldModalData, setNoFoldModalData] = useState(null);
@@ -148,6 +149,49 @@ function App() {
   const noFoldHighlightedElementsRef = useRef([]);
   const noFoldModalTimerRef = useRef(null);
   const noFoldViolationStateRef = useRef(null);
+
+  useEffect(() => {
+    // Close settings menu on outside click (use click bubbling to not preempt inputs)
+    if (!showSettings) return;
+    const handleOutsideClick = (e) => {
+      const menu = document.querySelector('.settings-menu');
+      const clickedInsideMenu = menu && menu.contains(e.target);
+      const clickedIcon = iconRef.current && iconRef.current.contains(e.target);
+      if (!clickedInsideMenu && !clickedIcon) {
+        setShowSettings(false);
+      }
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [showSettings]);
+
+  // Position the settings menu directly under the icon, centered (with slight horizontal bias)
+  useEffect(() => {
+    if (!showSettings) return;
+    const positionMenu = () => {
+      const iconEl = iconRef.current;
+      const menuEl = document.querySelector('.settings-menu');
+      if (!iconEl || !menuEl) return;
+      const iconRect = iconEl.getBoundingClientRect();
+      const menuRect = menuEl.getBoundingClientRect();
+      const margin = 8;
+      // Horizontal bias shifts the menu slightly to the right relative to perfect centering.
+      const horizontalBias = 10; // pixels: move left edge right by ~10px as requested
+      let left = iconRect.left + iconRect.width / 2 - menuRect.width / 2 + horizontalBias;
+      left = Math.max(margin, Math.min(window.innerWidth - menuRect.width - margin, left));
+      const top = iconRect.bottom + margin;
+      // Apply directly to the menu element
+      menuEl.style.left = `${left}px`;
+      menuEl.style.top = `${top}px`;
+    };
+    positionMenu();
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [showSettings]);
 
   useEffect(() => {
     noFoldViolationStateRef.current = noFoldViolationState;
@@ -965,6 +1009,7 @@ function App() {
         <div className="welcome-message fade-message">You did it! 100%!</div>
       )}
       <img
+        ref={iconRef}
         src={SettingIconImage}
         alt="Settings Icon"
         className="icon"
