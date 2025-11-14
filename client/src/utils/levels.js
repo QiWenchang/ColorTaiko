@@ -22,6 +22,7 @@ export const levelGraph = {
     ["level-1", "level-2"],
     ["level-2", "level-3-nf"],
     ["level-2", "level-3-g4"],
+  ["level-3-g4", "level-4-nf-g4"],
     ["level-3-nf", "level-4-nf-np"],
     ["level-3-nf", "level-4-nf-g4"],
     ["level-4-nf-np", "level-5-nf-np-g4"],
