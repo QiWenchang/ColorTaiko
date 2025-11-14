@@ -996,6 +996,7 @@ function App() {
       <ProgressBar
         progress={progress}
         connections={connections}
+        connectionGroups={connectionGroups}
         topRowCount={topRowCount}
         bottomRowCount={bottomRowCount}
         lightMode={lightMode}
