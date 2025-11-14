@@ -114,13 +114,19 @@ body {
 .level-icon__caption {
   padding: 4px 10px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #000000;
+  /* Dark-mode default: white text on black background */
+  background: rgba(0, 0, 0, 0.9);
+  color: #ffffff;
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  /* Give a subtle lift and improve legibility on varied backgrounds */
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.02);
+  /* Make white text pop against the dark background */
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  /* Non-white outline: subtle charcoal border to provide a visible contour without using white */
+  border: 1px solid rgba(43, 43, 43, 0.6);
 }
 
 .light-mode .level-icon__caption {
