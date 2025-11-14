@@ -36,11 +36,11 @@ export const levelDescriptions = {
   "Level 1": ["color merging"],
   "Level 2": ["color merging", "orientation"],
   "Level 3.NF": ["color merging", "orientation", "no-fold"],
-  "Level 3.G4": ["color merging", "orientation", "girth-4"],
+  "Level 3.G4": ["color merging", "orientation", "girth ≥ 4"],
   "Level 4.NF+NP": ["color merging", "orientation", "no-fold", "no-pattern"],
-  "Level 4.NF+G4": ["color merging", "orientation", "no-fold", "girth-4"],
-  "Level 5.NF+NP+G4": ["color merging", "orientation", "no-fold", "no-pattern", "girth-4"],
-  "Level 5.NF+NP+G6": ["color merging", "orientation", "no-fold", "no-pattern", "girth-6"],
+  "Level 4.NF+G4": ["color merging", "orientation", "no-fold", "girth ≥ 4"],
+  "Level 5.NF+NP+G4": ["color merging", "orientation", "no-fold", "no-pattern", "girth ≥ 4"],
+  "Level 5.NF+NP+G6": ["color merging", "orientation", "no-fold", "no-pattern", "girth ≥ 6"],
 };
 
 // Levels that include the No-Pattern constraint
