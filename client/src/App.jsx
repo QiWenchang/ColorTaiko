@@ -575,7 +575,8 @@ function App() {
    */
   useEffect(() => {
     const handleResize = () => {
-      drawConnections(svgRef, connections, connectionPairs, offset);
+      // On resize, also pass orientation refs so arrows/horizontal edges are redrawn correctly
+      drawConnections(svgRef, connections, connectionPairs, offset, topOrientation, botOrientation);
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
