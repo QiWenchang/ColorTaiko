@@ -144,8 +144,8 @@ function App() {
   const iconRef = useRef(null);
   const [welcomeMessage, setWelcomeMessage] = useState(false);
   const [Percent100Message, setPercent100Message] = useState(false);
-  const [noFoldModalData, setNoFoldModalData] = useState(null);
-  const [noFoldViolationState, setNoFoldViolationState] = useState(null);
+  const [noFoldModalData, setNoFoldModalData] = useState(null); // {code,message,violations}
+  const [noFoldViolationState, setNoFoldViolationState] = useState(null); // {highlights,shouldUndoAfterFlash,code}
   const noFoldHighlightedElementsRef = useRef([]);
   const noFoldModalTimerRef = useRef(null);
   const noFoldViolationStateRef = useRef(null);
@@ -360,14 +360,14 @@ function App() {
 
   const triggerNoFoldFeedback = useCallback(
     (result, options = {}) => {
-      const { message, violations } = result || {};
+      const { message, violations, code } = result || {};
       const shouldAutoUndo = options.autoUndo ?? false;
 
       if (!Array.isArray(violations) || violations.length === 0) {
         clearNoFoldEffects({ skipUndo: true });
         setNoFoldModalData(null);
         setNoFoldViolationState(null);
-        setErrorMessage(message || "No-Fold condition failed!");
+        setErrorMessage(message || (code === 'ORIENTATION' ? 'Orientation condition failed!' : 'No-Fold condition failed!'));
         if (shouldAutoUndo) {
           handleUndo();
         }
@@ -387,18 +387,19 @@ function App() {
         detail.edges.forEach((edge) => {
           if (!edge?.id) return;
           const key = `${sequence}:${edge.id}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            highlights.push({ sequence, edgeId: edge.id });
-          }
+            if (!seen.has(key)) {
+              seen.add(key);
+              highlights.push({ sequence, edgeId: edge.id });
+            }
         });
       });
 
       setNoFoldViolationState({
         highlights,
         shouldUndoAfterFlash: shouldAutoUndo,
-        message: message || "No-Fold condition failed!",
+        message: message || (code === 'ORIENTATION' ? 'Orientation condition failed!' : 'No-Fold condition failed!'),
         violations,
+        code: code || 'NO_FOLD'
       });
     },
     [clearNoFoldEffects, handleUndo]
@@ -464,14 +465,21 @@ function App() {
       return;
     }
 
-    const { highlights, message, violations } = noFoldViolationState;
+    const { highlights, message, violations, code } = noFoldViolationState;
     const svgEl = svgRef.current;
 
     if (!svgEl) {
-      setNoFoldModalData({
-        message: message || "No-Fold condition failed!",
-        violations,
-      });
+      if (noFoldModalTimerRef.current) {
+        clearTimeout(noFoldModalTimerRef.current);
+      }
+      noFoldModalTimerRef.current = setTimeout(() => {
+        setNoFoldModalData({
+          message: message || (code === 'ORIENTATION' ? 'Orientation condition failed!' : 'No-Fold condition failed!'),
+          violations,
+          code
+        });
+        noFoldModalTimerRef.current = null;
+      }, NO_FOLD_FLASH_DURATION);
       return;
     }
 
@@ -502,10 +510,17 @@ function App() {
     });
 
     if (newlyHighlighted.length === 0) {
-      setNoFoldModalData({
-        message: message || "No-Fold condition failed!",
-        violations,
-      });
+      if (noFoldModalTimerRef.current) {
+        clearTimeout(noFoldModalTimerRef.current);
+      }
+      noFoldModalTimerRef.current = setTimeout(() => {
+        setNoFoldModalData({
+          message: message || (code === 'ORIENTATION' ? 'Orientation condition failed!' : 'No-Fold condition failed!'),
+          violations,
+          code
+        });
+        noFoldModalTimerRef.current = null;
+      }, NO_FOLD_FLASH_DURATION);
       return;
     }
 
@@ -517,8 +532,9 @@ function App() {
 
     noFoldModalTimerRef.current = setTimeout(() => {
       setNoFoldModalData({
-        message: message || "No-Fold condition failed!",
+        message: message || (code === 'ORIENTATION' ? 'Orientation condition failed!' : 'No-Fold condition failed!'),
         violations,
+        code
       });
       noFoldModalTimerRef.current = null;
     }, NO_FOLD_FLASH_DURATION);
@@ -663,7 +679,7 @@ function App() {
         if (!validation.ok) {
           setSelectedNodes([]);
           setHighlightedNodes([]);
-          if (validation.code === "NO_FOLD") {
+          if (validation.code === "NO_FOLD" || validation.code === "ORIENTATION") {
             triggerNoFoldFeedback(validation, { autoUndo: true });
           } else {
             setErrorMessage(validation.message || "Level condition failed!");
